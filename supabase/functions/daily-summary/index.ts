@@ -216,6 +216,27 @@ async function cmdThreshold(arg?: string) {
   ].join("\n"));
 }
 
+// How long leads may stop arriving before leap-sync warns that something is silently broken.
+async function cmdQuiet(arg?: string) {
+  if (arg && /^\d+(\.\d+)?$/.test(arg)) {
+    const v = Number(arg);
+    await supabase.from("app_secrets").upsert({ key: "quiet_alert_hours", value: String(v) }, { onConflict: "key" });
+    return send(v === 0
+      ? "🔕 התראת ׳אין לידים׳ כובתה."
+      : `✅ התראה אם לא ייכנסו לידים במשך <b>${v} שעות</b>.`);
+  }
+  const { data } = await supabase.from("app_secrets").select("value").eq("key", "quiet_alert_hours").maybeSingle();
+  const cur = Number(data?.value ?? 6);
+  const { data: lastRow } = await supabase.from("leap_leads").select("client_ts")
+    .not("client_ts", "is", null).order("client_ts", { ascending: false }).limit(1).maybeSingle();
+  const idle = lastRow?.client_ts ? (Date.now() - new Date(lastRow.client_ts).getTime()) / 3600e3 : null;
+  return send([
+    cur > 0 ? `🔕 התראה אם אין לידים במשך <b>${cur} שעות</b>` : "🔕 התראת ׳אין לידים׳ כבויה",
+    idle === null ? "" : `⏱ הליד האחרון נכנס לפני ${idle.toFixed(1)} שעות.`,
+    "לשינוי: <code>/quiet 4</code> · לכיבוי: <code>/quiet 0</code>",
+  ].filter(Boolean).join("\n"));
+}
+
 // lead-digest sends the message itself, so only the empty case needs an answer here.
 async function cmdDigest(key: string) {
   const r = await fetch(DIGEST_URL, {
@@ -238,6 +259,7 @@ const HELP = [
   "/state TX – נתוני state (7 ימים)",
   "/digest – לשלוח עכשיו את הלידים שממתינים לסיכום מרוכז",
   "/threshold – סף ההתראה המיידית (<code>/threshold 5</code> לשינוי)",
+  "/quiet – אחרי כמה שעות בלי לידים לקבל אזהרה (<code>/quiet 4</code>)",
   "",
   "לתקופה אחרת הוסיפי מספר ימים או month: <code>/top 30</code>, <code>/domain jackson month</code>, <code>/state CA today</code>",
   "",
@@ -299,6 +321,7 @@ Deno.serve(async (req) => {
       else if (c === "/state" && /^[a-z]{2}$/i.test(args[0] ?? "")) await cmdState(args[0], args[1]);
       else if (c === "/digest") await cmdDigest(key);
       else if (c === "/threshold") await cmdThreshold(args[0]);
+      else if (c === "/quiet") await cmdQuiet(args[0]);
       else if (c === "/start" || c === "/help" || c === "/domain" || c === "/state" || c === "/day") await send(HELP);
     } catch (e) {
       await tg("sendMessage", { chat_id: CHAT_ID, text: `⚠️ שגיאה: ${esc(String(e).slice(0, 200))}` }).catch(() => {});
@@ -323,6 +346,7 @@ Deno.serve(async (req) => {
       { command: "day", description: "סיכום לתאריך: /day 2026-09-01" },
       { command: "digest", description: "לשלוח עכשיו את הלידים הממתינים לסיכום מרוכז" },
       { command: "threshold", description: "סף ההתראה המיידית: /threshold 5" },
+      { command: "quiet", description: "אזהרה אחרי כמה שעות בלי לידים: /quiet 4" },
       { command: "help", description: "רשימת הפקודות" },
     ] }).catch(() => {});
     return json(r);

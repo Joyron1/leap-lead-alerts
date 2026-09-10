@@ -38,6 +38,23 @@ If it still feels noisy, raise the threshold from the phone; there is no redeplo
 Supabase REST gateway timing out (~0.5% of runs), not Leap. With a 1-minute schedule and no retry, one timeout
 produced a failure message and the next minute a "recovered" message. Fixed by the pending change above.
 
+## Liveness watchdog (added 2026-09-10)
+The system had no defence against its worst failure: a broken form on the sites, or a change to
+Leap's report markup that makes `parseLeads` match nothing. Both produce runs that return `ok`
+with zero leads, so the failure alert never fires and the first sign is a bad morning summary.
+
+`leap-sync` now checks twice an hour (at :00 and :30) how long it has been since the newest lead.
+Past `app_secrets.quiet_alert_hours` (default **6**) it warns once, repeats at most every 6h while
+the drought lasts, and sends a "leads are back" message when they resume. `/quiet` shows it,
+`/quiet 4` changes it, `/quiet 0` disables it. Force a check with `{"quiet":true}`.
+
+6h was chosen from the data, not by feel: over the first 10 days the median gap between leads was
+28 minutes, p99 4.3h and the longest 5.6h, so 6h produces no false alarms while 5h would already
+have fired once on healthy traffic. Re-check this once there is more history.
+
+Both paths were verified end to end on 2026-09-10 by temporarily setting the threshold to 0.2h
+(alert fired) and back to 6h (recovery message fired, state reset).
+
 ## `scripts/run.sh` was sending broken JSON (fixed 2026-09-10)
 The script built its body as `BODY="${2:-{}}"`. Bash ends the expansion at the first `}`, so a
 supplied body came out with a stray `}` appended, the function's `req.json()` threw, and the
@@ -51,8 +68,10 @@ If a manual call ever looks like it ignored its arguments, check the body first.
 select value from public.app_secrets where key = 'cron_key';
 -- leads waiting for the next digest
 select count(*) from public.leap_leads where telegram_sent = false and digested_at is null and status <> 'pending';
--- current immediate-alert threshold (dollars)
-select value from public.app_secrets where key = 'alert_min_payout';
+-- current immediate-alert threshold (dollars) and watchdog window (hours)
+select key, value from public.app_secrets where key in ('alert_min_payout','quiet_alert_hours');
+-- how long since the last lead
+select round(extract(epoch from (now() - max(client_ts)))/3600, 2) as idle_hours from public.leap_leads;
 -- today by Leap's day
 select * from public.lead_summary(current_date, 'America/Los_Angeles');
 -- recent sync results

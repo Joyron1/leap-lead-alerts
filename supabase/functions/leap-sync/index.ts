@@ -274,6 +274,43 @@ async function noteOk() {
   await setState("leap_sync_state", JSON.stringify({ last_ok_at: Date.now(), fail_count: 0 }));
 }
 
+// ---------- liveness watchdog ----------
+// The dangerous failure is the silent one: if the form on the sites breaks, or Leap changes the
+// report markup so parseLeads matches nothing, every run still returns ok with zero leads and
+// noteError never fires. The only symptom is that leads stop arriving, so watch for that directly.
+// Measured over the first 10 days: median gap between leads 28 min, p99 4.3h, longest 5.6h —
+// hence a 6h default, which would not have produced a single false alarm.
+const QUIET_HOURS_DEFAULT = 6;
+async function quietCheck() {
+  const hours = Number((await getState("quiet_alert_hours")) || QUIET_HOURS_DEFAULT);
+  if (!Number.isFinite(hours) || hours <= 0) return; // 0 disables the watchdog
+  const { data } = await supabase
+    .from("leap_leads").select("client_ts").not("client_ts", "is", null)
+    .order("client_ts", { ascending: false }).limit(1).maybeSingle();
+  const last = data?.client_ts ? new Date(data.client_ts).getTime() : 0;
+  if (!last) return; // empty table: nothing to compare against
+
+  const st = JSON.parse((await getState("quiet_alert_state")) || "{}");
+  const now = Date.now();
+  const idle = (now - last) / 3600e3;
+
+  if (idle >= hours) {
+    // Repeat at most every 6h so a long outage does not become its own flood.
+    if (st.notified_at && now - st.notified_at < 6 * 3600e3) return;
+    await tg([
+      `🔕 <b>לא נכנסו לידים כבר ${idle.toFixed(1)} שעות</b>`,
+      `הסף להתראה הוא ${hours} שעות, והפער הכי ארוך שנמדד עד היום היה 5.6 שעות.`,
+      "",
+      "כדאי לבדוק שהטופס באתרים עדיין נטען ושהדוח של Leap נפתח כרגיל.",
+      "אודיע כשלידים יחזרו להיכנס.",
+    ].join("\n")).catch(() => {});
+    await setState("quiet_alert_state", JSON.stringify({ notified_at: now, announced: true }));
+  } else if (st.announced) {
+    await tg(`🔔 <b>הלידים חזרו להיכנס.</b>\nהאחרון לפני ${idle.toFixed(1)} שעות.`).catch(() => {});
+    await setState("quiet_alert_state", JSON.stringify({ recovered_at: now }));
+  }
+}
+
 // ---------- handler ----------
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
@@ -311,6 +348,12 @@ Deno.serve(async (req: Request) => {
     for (const d of days) results.push(await syncDay(d, jar, alert));
     await setState("leap_cookies", JSON.stringify(jar));
     await noteOk();
+    // Twice an hour is plenty for a 6-hour signal, and keeps this off the per-minute path.
+    // {"quiet":true} forces the check for testing.
+    const minute = new Date().getUTCMinutes();
+    if (alert && (body.quiet === true || (body.cron === true && (minute === 0 || minute === 30)))) {
+      await quietCheck().catch(() => {});
+    }
     return json({ ok: true, results });
   } catch (e) {
     const msg = String((e as Error)?.message ?? e);
