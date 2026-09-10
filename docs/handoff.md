@@ -1,16 +1,20 @@
 # Hand-off notes (2026-09-10)
 
 ## Status
-- Everything is deployed and running: `lead-alert` (v11), `daily-summary` (v10), `leap-sync` (v10, deployed 2026-09-10 via the Supabase MCP), pg_cron jobs active.
+- Everything is deployed and running: `lead-alert` (v12), `daily-summary` (v11), `leap-sync` (v13), pg_cron jobs active. All three were (re)deployed from this repo on 2026-09-10 with `scripts/deploy.sh`, so production == repo.
 - Data verified against Leap's own report on 2026-09-02 (27/27), 09-03 (24/24 after backfill), 09-04 (21/21).
 - WordPress plugin v1.2 is network-active on the multisite.
 
-## Deployed 2026-09-10 (leap-sync v10)
+## Deployed 2026-09-10 (leap-sync retry fix)
 `supabase/functions/leap-sync/index.ts` — this version is now in production:
 - retries transient failures (Supabase gateway timeouts, network blips) up to 3×,
 - alerts about sync failures only after 5 consecutive failed runs (was: every single failure → noisy "failed"/"recovered" flip-flop),
 - clearer failure text (auth problem vs transient).
-Future deploys: `scripts/deploy.sh leap-sync` (needs `supabase login` in an interactive terminal first).
+Future deploys: `scripts/deploy.sh leap-sync` from WSL (see below). Note: running `scripts/deploy.sh` with no argument deploys **all** functions.
+
+## Repo / environment
+- Source of truth: https://github.com/Joyron1/leap-lead-alerts. Working copy: `~/projects/leap-lead-alerts` in WSL (Ubuntu).
+- Supabase CLI 2.117 lives in WSL at `~/.local/bin/supabase` (no sudo needed), already logged in and linked to the project. The Windows npm install is not logged in; use WSL.
 
 ## Why the "connection to Leap keeps dropping" messages happened
 `net._http_response` showed the failures were `select known leads: Gateway Timeout` — the function's own call to the
