@@ -93,22 +93,29 @@ Deno.serve(async (req: Request) => {
   const key = keyRow?.value ?? "";
   if (!key || req.headers.get("x-cron-key") !== key) return new Response("forbidden", { status: 403 });
   const json = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status, headers: { "content-type": "application/json" } });
+  const body = await req.json().catch(() => ({})) as { dry?: boolean; sample?: number };
+
+  // {"dry":true} renders without sending or marking; add {"sample":10} to preview the format
+  // against the last N finalized leads even when nothing is actually waiting.
+  const dry = body.dry === true;
+  const sample = Number(body.sample) > 0 ? Math.min(50, Number(body.sample)) : 0;
 
   try {
     // Everything final that nobody has been told about yet. `pending` rows are excluded:
     // Leap has not decided them, so they are not news until leap-sync finalizes them.
-    const { data, error } = await supabase
+    let q = supabase
       .from("leap_leads")
       .select("lead_id, domain, state, status, payout, client_ts, received_at")
-      .eq("telegram_sent", false)
-      .is("digested_at", null)
-      .neq("status", "pending")
-      .order("received_at", { ascending: true })
-      .limit(500);
+      .neq("status", "pending");
+    q = sample
+      ? q.order("received_at", { ascending: false }).limit(sample)
+      : q.eq("telegram_sent", false).is("digested_at", null).order("received_at", { ascending: true }).limit(500);
+    const { data, error } = await q;
     if (error) throw new Error(`select undigested: ${error.message}`);
 
     const rows = (data ?? []) as Row[];
     if (!rows.length) return json({ ok: true, sent: false, count: 0 });
+    if (dry) return json({ ok: true, dry: true, sent: false, count: rows.length, text: buildText(rows) });
 
     await tg(buildText(rows));
     // Stamp only after Telegram accepted the message: a failed send is retried by the next run.
