@@ -6,3 +6,5 @@ verify_jwt = false
 verify_jwt = false
 [functions.leap-sync]
 verify_jwt = false
+[functions.lead-digest]
+verify_jwt = false

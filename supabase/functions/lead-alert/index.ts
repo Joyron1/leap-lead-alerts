@@ -47,6 +47,15 @@ function esc(s: unknown) {
   return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// Immediate alerts are reserved for leads that actually pay something; everything below this
+// is stored silently and batched by the lead-digest function. Dollars.
+const DEFAULT_MIN_PAYOUT = 3;
+async function minPayout(): Promise<number> {
+  const { data } = await supabase.from("app_secrets").select("value").eq("key", "alert_min_payout").maybeSingle();
+  const n = Number(data?.value ?? Deno.env.get("ALERT_MIN_PAYOUT") ?? DEFAULT_MIN_PAYOUT);
+  return Number.isFinite(n) && n >= 0 ? n : DEFAULT_MIN_PAYOUT;
+}
+
 async function sendTelegram(text: string) {
   if (!BOT_TOKEN || !CHAT_ID) throw new Error("TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set");
   const r = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
@@ -118,12 +127,19 @@ Deno.serve(async (req) => {
     }
   }
 
+  // Cheap lead: the row is already stored, so say nothing now and let lead-digest batch it.
+  if (payout < await minPayout()) {
+    return new Response(JSON.stringify({ ok: true, digest: true }), {
+      headers: { ...cors, "content-type": "application/json" },
+    });
+  }
+
   // Note: Leap's isDeclined flag only means the visitor was not redirected to a lender;
   // the lead is still accepted and paid, so it is shown as ACCEPTED.
   const accepted = status === "accepted";
   const icon = accepted ? "✅" : status === "rejected" ? "❌" : "⚠️";
   const label = accepted ? "ACCEPTED" : status === "rejected" ? "REJECTED" : status.toUpperCase();
-  const fire = payout > 50 ? " 🔥🔥🔥" : payout > 30 ? " 🔥🔥" : payout > 10 ? " 🔥" : "";
+  const fire = payout > 20 ? " 🔥🔥🔥" : payout > 10 ? " 🔥🔥" : payout > 5 ? " 🔥" : "";
   const loan = formatLoan(row.loan_range, row.loan_amount);
   const text = [
     `${icon} <b>${headline} – ${label}</b>${fire}`,

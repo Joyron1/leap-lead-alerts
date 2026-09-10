@@ -83,6 +83,15 @@ async function setState(key: string, value: string) {
   await supabase.from("app_secrets").upsert({ key, value }, { onConflict: "key" });
 }
 
+// Immediate alerts are reserved for leads that actually pay something; everything below this
+// is stored silently and batched by the lead-digest function. Dollars.
+const DEFAULT_MIN_PAYOUT = 3;
+async function minPayout(): Promise<number> {
+  const raw = (await getState("alert_min_payout")) || Deno.env.get("ALERT_MIN_PAYOUT") || "";
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : DEFAULT_MIN_PAYOUT;
+}
+
 // ---------- Leap session (cookie jar) ----------
 type Jar = Record<string, string>;
 const jarHeader = (jar: Jar) => Object.entries(jar).map(([k, v]) => `${k}=${v}`).join("; ");
@@ -178,7 +187,7 @@ function alertText(l: Lead, headline = "ליד חדש") {
   const accepted = l.status === "accepted";
   const icon = accepted ? "✅" : l.status === "rejected" ? "❌" : "⚠️";
   const label = accepted ? "ACCEPTED" : l.status === "rejected" ? "REJECTED" : l.status.toUpperCase();
-  const fire = l.earnings > 50 ? " 🔥🔥🔥" : l.earnings > 30 ? " 🔥🔥" : l.earnings > 10 ? " 🔥" : "";
+  const fire = l.earnings > 20 ? " 🔥🔥🔥" : l.earnings > 10 ? " 🔥🔥" : l.earnings > 5 ? " 🔥" : "";
   return [
     `${icon} <b>${headline} – ${label}</b>${fire}`,
     `🌐 ${esc(l.domain)}`,
@@ -204,6 +213,7 @@ async function syncDay(day: string, jar: Jar, alert: boolean) {
     });
   }
   const known = new Map<string, Known>(existing.map((r) => [r.lead_id, r]));
+  const min = await minPayout(); // below this a lead is stored silently and left to lead-digest
   let inserted = 0, updated = 0, alerted = 0, pending = 0;
   const notify = async (id: string, text: string) => {
     let err: string | null = null;
@@ -223,17 +233,19 @@ async function syncDay(day: string, jar: Jar, alert: boolean) {
       });
       if (error) { if (!/duplicate/i.test(error.message)) throw new Error(`insert ${l.id}: ${error.message}`); continue; }
       inserted++;
-      if (alert && final) await notify(l.id, alertText(l)); // pending leads are stored silently until Leap finalizes them
+      // Pending leads wait for Leap to decide them; cheap ones wait for the digest.
+      if (alert && final && l.earnings >= min) await notify(l.id, alertText(l));
     } else if (!isFinal(k.status) && final) {
       // a lead stored as pending is now Accepted/Rejected -> this is the (only) alert for it
       await supabase.from("leap_leads").update({ payout: l.earnings, status: l.status }).eq("lead_id", l.id);
       updated++;
-      if (alert) await notify(l.id, alertText(l));
+      if (alert && l.earnings >= min) await notify(l.id, alertText(l));
     } else if (final && (Number(k.payout) !== l.earnings || k.status !== l.status)) {
-      // Leap is the source of truth (e.g. PPR payout credited later)
+      // Leap is the source of truth (e.g. PPR payout credited later). Worth interrupting for
+      // only when the new payout crosses the threshold that the first report did not.
       await supabase.from("leap_leads").update({ payout: l.earnings, status: l.status }).eq("lead_id", l.id);
       updated++;
-      if (alert && Number(k.payout) === 0 && l.earnings > 0) await notify(l.id, alertText(l, "עדכון לליד"));
+      if (alert && Number(k.payout) < min && l.earnings >= min) await notify(l.id, alertText(l, "עדכון לליד"));
     }
   }
   return { day, inLeap: leads.length, pending, inserted, updated, alerted };

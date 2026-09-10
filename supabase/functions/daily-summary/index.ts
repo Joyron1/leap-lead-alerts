@@ -16,6 +16,7 @@ const SEND_TZ = "Asia/Jerusalem";
 const SUMMARY_HOUR = Number(Deno.env.get("SUMMARY_HOUR") ?? "10");
 const FN_URL = `${Deno.env.get("SUPABASE_URL")}/functions/v1/daily-summary`;
 const SYNC_URL = `${Deno.env.get("SUPABASE_URL")}/functions/v1/leap-sync`;
+const DIGEST_URL = `${Deno.env.get("SUPABASE_URL")}/functions/v1/lead-digest`;
 
 const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -199,6 +200,32 @@ async function cmdMonth() {
   return send(lines.join("\n"));
 }
 
+// The immediate-alert threshold lives in app_secrets so it can be tuned from the phone,
+// without a redeploy. lead-alert and leap-sync read the same key.
+async function cmdThreshold(arg?: string) {
+  if (arg && /^\d+(\.\d+)?$/.test(arg)) {
+    const v = Number(arg);
+    await supabase.from("app_secrets").upsert({ key: "alert_min_payout", value: String(v) }, { onConflict: "key" });
+    return send(`✅ סף ההתראה המיידית עודכן ל-<b>${money(v)}</b>.\nלידים מתחת לסף ייאספו לסיכום המרוכז.`);
+  }
+  const { data } = await supabase.from("app_secrets").select("value").eq("key", "alert_min_payout").maybeSingle();
+  return send([
+    `⚙️ סף ההתראה המיידית: <b>${money(Number(data?.value ?? 3))}</b>`,
+    "ליד ששווה יותר מזה מגיע מיד; כל השאר נאסף לסיכום מרוכז כל 3 שעות.",
+    "לשינוי: <code>/threshold 5</code>",
+  ].join("\n"));
+}
+
+// lead-digest sends the message itself, so only the empty case needs an answer here.
+async function cmdDigest(key: string) {
+  const r = await fetch(DIGEST_URL, {
+    method: "POST", headers: { "content-type": "application/json", "x-cron-key": key },
+    body: "{}", signal: AbortSignal.timeout(60_000),
+  });
+  const j = await r.json().catch(() => ({})) as { count?: number };
+  if (!j?.count) await send("📭 אין לידים שממתינים לסיכום מרוכז.");
+}
+
 const HELP = [
   "<b>פקודות זמינות:</b>",
   "/summary – סיכום של אתמול",
@@ -209,10 +236,13 @@ const HELP = [
   "/top – דומיינים ו-states מובילים (7 ימים)",
   "/domain el-paso – נתוני דומיין (7 ימים)",
   "/state TX – נתוני state (7 ימים)",
+  "/digest – לשלוח עכשיו את הלידים שממתינים לסיכום מרוכז",
+  "/threshold – סף ההתראה המיידית (<code>/threshold 5</code> לשינוי)",
   "",
   "לתקופה אחרת הוסיפי מספר ימים או month: <code>/top 30</code>, <code>/domain jackson month</code>, <code>/state CA today</code>",
   "",
   "סיכום אוטומטי נשלח כל בוקר ב-10:00 (שעון ישראל). הימים נספרים לפי שעון Leap (קליפורניה), כמו בדוח שלהם.",
+  "לידים זולים לא מפוצצים את הצ'אט: הם נאספים לסיכום מרוכז כל 3 שעות, ורק ליד מעל הסף מגיע מיד.",
 ].join("\n");
 
 // Telegram caps a message at 4096 chars; split on line boundaries if needed.
@@ -267,6 +297,8 @@ Deno.serve(async (req) => {
       else if (c === "/top") await cmdTop(args[0]);
       else if (c === "/domain" && args[0]) await cmdDomain(args[0].toLowerCase(), args[1]);
       else if (c === "/state" && /^[a-z]{2}$/i.test(args[0] ?? "")) await cmdState(args[0], args[1]);
+      else if (c === "/digest") await cmdDigest(key);
+      else if (c === "/threshold") await cmdThreshold(args[0]);
       else if (c === "/start" || c === "/help" || c === "/domain" || c === "/state" || c === "/day") await send(HELP);
     } catch (e) {
       await tg("sendMessage", { chat_id: CHAT_ID, text: `⚠️ שגיאה: ${esc(String(e).slice(0, 200))}` }).catch(() => {});
@@ -289,6 +321,8 @@ Deno.serve(async (req) => {
       { command: "domain", description: "נתוני דומיין: /domain el-paso [30|month]" },
       { command: "state", description: "נתוני state: /state TX [30|month]" },
       { command: "day", description: "סיכום לתאריך: /day 2026-09-01" },
+      { command: "digest", description: "לשלוח עכשיו את הלידים הממתינים לסיכום מרוכז" },
+      { command: "threshold", description: "סף ההתראה המיידית: /threshold 5" },
       { command: "help", description: "רשימת הפקודות" },
     ] }).catch(() => {});
     return json(r);

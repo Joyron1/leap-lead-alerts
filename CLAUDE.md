@@ -9,11 +9,12 @@ Telegram messages are in Hebrew, code/comments in English.
 | Piece | Where | Purpose |
 |---|---|---|
 | `wordpress/leap-lead-alerts/` (plugin v1.2, **Network Active**) | WP multisite | Runs a small JS snippet in every page (`wp_head`, priority 1). It patches `XMLHttpRequest`/`fetch` to observe the Leap embedded form's own request to `yourembeddedform.com/api/leads/` and, when the response arrives, sends a **PII-free** ping (`navigator.sendBeacon`, text/plain, fallback `fetch keepalive`) to the `lead-alert` function. Backup path: Leap's official widget hook `window.EmbeddedForm.addEventHandlers('postLead', …)`. |
-| `supabase/functions/lead-alert` | Supabase Edge (Deno) | Validates origin (`*.snaploans.cash`), upserts into `leap_leads`, sends the Telegram alert. If the row already exists as `pending` (inserted by `leap-sync`) it completes it and sends the single alert. Duplicates only enrich (loan amount / pay model / page). |
-| `supabase/functions/leap-sync` | Supabase Edge, **every minute** via pg_cron | Logs in to leaptheory.com with `LEAP_USER`/`LEAP_PASS` (cookie jar persisted in `app_secrets.leap_cookies`), scrapes the publisher "Leads" report for today (Pacific), inserts leads the browser missed, alerts **only when status is Accepted/Rejected** (pending rows are stored silently), and updates payout/status because Leap is the source of truth. Retries transient errors; alerts on failure only after 5 consecutive failed runs. |
+| `supabase/functions/lead-alert` | Supabase Edge (Deno) | Validates origin (`*.snaploans.cash`), upserts into `leap_leads`, and sends the Telegram alert **only if the payout reaches `app_secrets.alert_min_payout`**; cheaper leads are stored silently for `lead-digest`. If the row already exists as `pending` (inserted by `leap-sync`) it completes it and sends the single alert. Duplicates only enrich (loan amount / pay model / page). |
+| `supabase/functions/leap-sync` | Supabase Edge, **every minute** via pg_cron | Logs in to leaptheory.com with `LEAP_USER`/`LEAP_PASS` (cookie jar persisted in `app_secrets.leap_cookies`), scrapes the publisher "Leads" report for today (Pacific), inserts leads the browser missed, alerts **only when status is Accepted/Rejected and the payout reaches `alert_min_payout`** (pending and cheap rows are stored silently), and updates payout/status because Leap is the source of truth. Retries transient errors; alerts on failure only after 5 consecutive failed runs. |
+| `supabase/functions/lead-digest` | Supabase Edge, **every 3 hours** via pg_cron | Half the leads pay under $0.60, so announcing each one buries the good ones. This batches every finalized lead that was left unannounced into a single Telegram message (totals, top domains, top states) and stamps `digested_at` so nothing is reported twice. Sends nothing when there is nothing waiting. Also reachable from the bot as `/digest`. |
 | `supabase/functions/daily-summary` | Supabase Edge, cron 07:00+08:00 UTC (sends only at 10:00 Israel) + Telegram webhook | Runs a sync first, then sends the daily summary (totals, 🟢/🔴 % vs previous day). Also serves bot commands: `/summary /today /day /week /month /top /domain /state /help`. |
 | `public.leap_leads` | Postgres | Lead log, no PII. `source` = xhr/fetch/hook (browser) or leap-sync. |
-| `public.app_secrets` | Postgres (RLS, service role only) | `cron_key` (auth for cron/manual calls), `leap_cookies`, `leap_sync_state`. |
+| `public.app_secrets` | Postgres (RLS, service role only) | `cron_key` (auth for cron/manual calls), `leap_cookies`, `leap_sync_state`, `alert_min_payout` (dollars; the immediate-alert threshold, tunable from the bot with `/threshold`). |
 | SQL functions `lead_summary`, `lead_range_summary` | Postgres | Aggregations used by the bot. |
 
 Supabase project: **leap-lead-alerts**, ref `tipuzwoirrzlibplmbji`, org "snap loans", region eu-central-1, free tier.
@@ -25,7 +26,8 @@ Telegram: bot token + chat id live only in Supabase secrets.
 - Never hardcode secrets. Names: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `LEAP_USER`, `LEAP_PASS` (optional `SUMMARY_TZ`, `SUMMARY_HOUR`, `ALERT_KEY`).
 - Leap's report day is **America/Los_Angeles** (company is in Santa Monica). Midnight Pacific = 10:00 Israel, which is why the morning summary is at 10:00 Israel. Do not change `DAY_TZ` without changing the summary time.
 - Leap's `isDeclined` flag on an accepted lead only means the visitor saw a "decline" page; the lead is still accepted and paid → always treated as ACCEPTED.
-- One Telegram message per lead, only when the status is final (accepted/rejected).
+- One Telegram message per lead, only when the status is final (accepted/rejected). A lead reaches the chat exactly once: an immediate alert when `payout >= alert_min_payout`, otherwise one line in the next `lead-digest`. The only second message allowed is when Leap later raises a payout across the threshold ("עדכון לליד").
+- A lead is never both alerted and digested: `telegram_sent` marks the first, `digested_at` the second, and `lead-digest` selects only rows where both are unset.
 
 ## Leap report scraping facts (leap-sync)
 - Login: GET any `/account/...` page → returns 404 + login form with hidden `_ap_csrf`, sets cookie `uLgnRedir`. POST `usr`, `pwd`, `_ap_csrf` to the same URL → session cookie `uLgn`. Wrong password → page contains "Invalid".
@@ -38,10 +40,11 @@ Telegram: bot token + chat id live only in Supabase secrets.
 ## Dev workflow
 ```bash
 npm i -g supabase && supabase login
-scripts/deploy.sh leap-sync        # or lead-alert | daily-summary | all
+scripts/deploy.sh leap-sync        # or lead-alert | daily-summary | lead-digest | all
 scripts/cron-key.sh                # prints app_secrets.cron_key
 CRON_KEY=... scripts/run.sh leap-sync '{"cron":true}'
 CRON_KEY=... scripts/run.sh daily-summary '{"period":"today"}'
+CRON_KEY=... scripts/run.sh lead-digest            # flush the batched cheap leads now
 scripts/build-wp-plugin.sh         # rebuild wordpress/leap-lead-alerts.zip after editing the snippet
 ```
 Type-check without Deno: `tsc --noEmit --strict --target es2022 --lib es2022,dom,dom.iterable` with a stub for `Deno` and the two imports (see docs/handoff.md).
@@ -52,3 +55,6 @@ Migrations in `supabase/migrations/` reconstruct the live schema (they were orig
 - Occasional `Gateway Timeout` from Supabase's REST gateway inside leap-sync → now retried; user is only notified after 5 consecutive failures.
 - Leap has no public API for leads (webmaster API = get-token/logout/verticals only) and no webhooks. Scraping the logged-in report is the only complete source.
 - The Supabase edge-function editor in the dashboard shows type errors for loosely typed query results — keep explicit types (see `Known` in leap-sync).
+- Payouts are small: over the first 10 days, 159 of 265 accepted leads paid ≤$0.60 and only 4 paid over $10. That is why the immediate alert has a threshold and the 🔥 marks sit at $5/$10/$20 rather than $10/$30/$50.
+- `scripts/run.sh` used to build its body as `"${2:-{}}"`, which bash ends at the first `}` — a supplied body arrived with a stray `}`, so **every** manual call silently fell back to the function's defaults (a `{"setup":"webhook"}` call just sent yesterday's summary instead). Fixed 2026-09-10; if a manual call ever seems to ignore its arguments, suspect the body first.
+- `Deno.serve(async (req) =>` in `lead-alert` and `daily-summary` has no type annotation, so the documented `tsc` check reports two pre-existing `TS7006` errors. `leap-sync` and `lead-digest` annotate `req: Request` and are clean.

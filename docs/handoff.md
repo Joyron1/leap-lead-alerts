@@ -1,7 +1,7 @@
 # Hand-off notes (2026-09-10)
 
 ## Status
-- Everything is deployed and running: `lead-alert` (v12), `daily-summary` (v11), `leap-sync` (v13), pg_cron jobs active. All three were (re)deployed from this repo on 2026-09-10 with `scripts/deploy.sh`, so production == repo.
+- Everything is deployed and running: `lead-alert` (v13), `daily-summary` (v12), `leap-sync` (v14), `lead-digest` (v1). All four were deployed from this repo on 2026-09-10 with `scripts/deploy.sh`, so production == repo. Four pg_cron jobs are active: `leap_sync_1min`, `lead_digest_3h`, `daily_summary_0700utc`, `daily_summary_0800utc`.
 - Data verified against Leap's own report on 2026-09-02 (27/27), 09-03 (24/24 after backfill), 09-04 (21/21).
 - WordPress plugin v1.2 is network-active on the multisite.
 
@@ -16,15 +16,43 @@ Future deploys: `scripts/deploy.sh leap-sync` from WSL (see below). Note: runnin
 - Source of truth: https://github.com/Joyron1/leap-lead-alerts. Working copy: `~/projects/leap-lead-alerts` in WSL (Ubuntu).
 - Supabase CLI 2.117 lives in WSL at `~/.local/bin/supabase` (no sudo needed), already logged in and linked to the project. The Windows npm install is not logged in; use WSL.
 
+## Alert threshold + digest (added 2026-09-10)
+The chat was getting ~27 messages a day, most of them for leads paying a few cents: of the first
+265 accepted leads, 159 paid ≤$0.60 and only 4 paid over $10. So:
+- an **immediate** alert now requires `payout >= app_secrets.alert_min_payout` (seeded at **$3**),
+- every other finalized lead is stored silently and batched by the new **`lead-digest`** function
+  (cron `0 */3 * * *`) into one message with totals, top domains and top states,
+- `leap_leads.digested_at` marks what a digest already reported, so a lead is announced exactly once,
+- 🔥 marks moved to $5 / $10 / $20; at the old $10/$30/$50 they had essentially never appeared,
+- new bot commands: `/threshold` (read, `/threshold 5` to change — no redeploy needed) and `/digest`
+  (send what is waiting right now).
+
+The migration backfilled `digested_at = now()` on the 44 historical rows that had never been sent,
+so the first digest could not dump the whole history.
+
+Expected volume after the change: roughly 2 immediate alerts a day plus up to 8 digests, instead of ~27 pings.
+If it still feels noisy, raise the threshold from the phone; there is no redeploy involved.
+
 ## Why the "connection to Leap keeps dropping" messages happened
 `net._http_response` showed the failures were `select known leads: Gateway Timeout` — the function's own call to the
 Supabase REST gateway timing out (~0.5% of runs), not Leap. With a 1-minute schedule and no retry, one timeout
 produced a failure message and the next minute a "recovered" message. Fixed by the pending change above.
 
+## `scripts/run.sh` was sending broken JSON (fixed 2026-09-10)
+The script built its body as `BODY="${2:-{}}"`. Bash ends the expansion at the first `}`, so a
+supplied body came out with a stray `}` appended, the function's `req.json()` threw, and the
+`.catch(() => ({}))` made it fall back to its defaults. Every documented manual call was affected:
+`{"setup":"webhook"}` just sent yesterday's summary, `{"debug":true,...}` never reached debug mode.
+If a manual call ever looks like it ignored its arguments, check the body first.
+
 ## Handy SQL
 ```sql
 -- cron key for manual calls
 select value from public.app_secrets where key = 'cron_key';
+-- leads waiting for the next digest
+select count(*) from public.leap_leads where telegram_sent = false and digested_at is null and status <> 'pending';
+-- current immediate-alert threshold (dollars)
+select value from public.app_secrets where key = 'alert_min_payout';
 -- today by Leap's day
 select * from public.lead_summary(current_date, 'America/Los_Angeles');
 -- recent sync results
