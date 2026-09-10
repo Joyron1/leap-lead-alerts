@@ -1,0 +1,8 @@
+.env
+.env.*
+node_modules/
+supabase/.temp/
+supabase/.branches/
+*.zip
+!wordpress/leap-lead-alerts.zip
+.DS_Store
