@@ -1,0 +1,8 @@
+project_id = "tipuzwoirrzlibplmbji"
+
+[functions.lead-alert]
+verify_jwt = false
+[functions.daily-summary]
+verify_jwt = false
+[functions.leap-sync]
+verify_jwt = false
