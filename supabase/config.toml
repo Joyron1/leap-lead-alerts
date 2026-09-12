@@ -8,3 +8,5 @@ verify_jwt = false
 verify_jwt = false
 [functions.lead-digest]
 verify_jwt = false
+[functions.keyword-report]
+verify_jwt = false

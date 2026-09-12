@@ -16,6 +16,22 @@ Future deploys: `scripts/deploy.sh leap-sync` from WSL (see below). Note: runnin
 - Source of truth: https://github.com/Joyron1/leap-lead-alerts. Working copy: `~/projects/leap-lead-alerts` in WSL (Ubuntu).
 - Supabase CLI 2.117 lives in WSL at `~/.local/bin/supabase` (no sudo needed), already logged in and linked to the project. The Windows npm install is not logged in; use WSL.
 
+## 2026-09-12: weekly keyword report (built, waiting for credentials)
+New function `keyword-report`, cron `keyword_report_weekly` (Monday 08:30 UTC). Google Sheet already created
+in Joy's Drive: https://docs.google.com/spreadsheets/d/15reZqnfz18V_2Hje0QnmFdqRzgtUUFIBOG7kUriTHMU
+(ID is the default `KEYWORD_SHEET_ID`). Deployed and scheduled, but it cannot run until these exist:
+1. `GSC_SA_JSON` secret — a Google Cloud service-account key (JSON) with the **Search Console API** and
+   **Google Sheets API** enabled on its project; the service-account email added as a user on the GSC
+   property (`GSC_PROPERTY`, default `sc-domain:snaploans.cash` — a domain property is what covers all 53
+   subdomains at once); and the Sheet shared with that same email as Editor.
+2. `ANTHROPIC_API_KEY` secret — for the research stage only. Without it the data stage still runs and the
+   Telegram failure message for stage `research` says so.
+Until they are set, every Monday produces a "דוח מילות המפתח נכשל" Telegram message naming the missing piece.
+Test order once set: `scripts/run.sh keyword-report '{"dry":true}'` (GSC + sheet preview), then
+`'{"stage":"research","dry":true}'`, then a real `'{}'`.
+The Claude call is `claude-opus-5` with web search (max 8 searches), structured JSON output, and the
+server-side refusal fallback enabled; expect roughly $0.50–1.50 per weekly run.
+
 ## 2026-09-12: back to one message per lead
 Joy tried the digest for two days and did not like it: every lead should show up as its own message the moment it lands.
 `alert_min_payout` is now **0**, so every finalized lead alerts immediately and the digest never
@@ -92,6 +108,11 @@ cat > /tmp/stub.d.ts <<'STUB'
 declare const Deno: any;
 declare module "jsr:@supabase/functions-js/edge-runtime.d.ts" {}
 declare module "npm:@supabase/supabase-js@2" { export function createClient(a: string, b: string): any; }
+declare module "npm:@anthropic-ai/sdk" {
+  class Anthropic { constructor(o?: any); beta: any; messages: any; }
+  namespace Anthropic { type MessageParam = any; type ContentBlockParam = any; }
+  export default Anthropic;
+}
 STUB
 tsc --noEmit --strict --target es2022 --lib es2022,dom,dom.iterable /tmp/stub.d.ts supabase/functions/leap-sync/index.ts
 ```
