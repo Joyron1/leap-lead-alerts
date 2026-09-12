@@ -242,10 +242,12 @@ async function syncDay(day: string, jar: Jar, alert: boolean) {
       if (alert && l.earnings >= min) await notify(l.id, alertText(l));
     } else if (final && (Number(k.payout) !== l.earnings || k.status !== l.status)) {
       // Leap is the source of truth (e.g. PPR payout credited later). Worth interrupting for
-      // only when the new payout crosses the threshold that the first report did not.
+      // only when the new payout crosses the threshold that the first report did not. With the
+      // threshold at 0 (alert on everything) "crossing" means going from $0 to anything.
       await supabase.from("leap_leads").update({ payout: l.earnings, status: l.status }).eq("lead_id", l.id);
       updated++;
-      if (alert && Number(k.payout) < min && l.earnings >= min) await notify(l.id, alertText(l, "עדכון לליד"));
+      const bar = Math.max(min, 0.01);
+      if (alert && Number(k.payout) < bar && l.earnings >= bar) await notify(l.id, alertText(l, "עדכון לליד"));
     }
   }
   return { day, inLeap: leads.length, pending, inserted, updated, alerted };

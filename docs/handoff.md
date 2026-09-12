@@ -16,7 +16,13 @@ Future deploys: `scripts/deploy.sh leap-sync` from WSL (see below). Note: runnin
 - Source of truth: https://github.com/Joyron1/leap-lead-alerts. Working copy: `~/projects/leap-lead-alerts` in WSL (Ubuntu).
 - Supabase CLI 2.117 lives in WSL at `~/.local/bin/supabase` (no sudo needed), already logged in and linked to the project. The Windows npm install is not logged in; use WSL.
 
-## Alert threshold + digest (added 2026-09-10)
+## 2026-09-12: back to one message per lead
+Joy tried the digest for two days and did not like it: every lead should show up as its own message the moment it lands.
+`alert_min_payout` is now **0**, so every finalized lead alerts immediately and the digest never
+has anything to send. The digest code and its cron stay in place (dormant, harmless) — restore the
+batching with `/threshold 3` at any time. Do not re-enable it on your own initiative.
+
+## Alert threshold + digest (added 2026-09-10, switched off 2026-09-12 — see above)
 The chat was getting ~27 messages a day, most of them for leads paying a few cents: of the first
 265 accepted leads, 159 paid ≤$0.60 and only 4 paid over $10. So:
 - an **immediate** alert now requires `payout >= app_secrets.alert_min_payout` (seeded at **$3**),
