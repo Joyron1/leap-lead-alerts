@@ -43,10 +43,10 @@ function formatLoan(range: string | null, amount: number | null) {
   return "";
 }
 
-// 🔥 scale (owner's spec, 2026-09-18): 1/2/3 marks above $5/$10/$20, then one mark per $10 from
-// $40 (4 marks) up to $100 (10 marks). Most leads pay under $1, so any fire at all is a signal.
+// 🔥 scale (owner's spec, 2026-09-18): one mark per full $10, nothing under $10, capped at 10 marks
+// ($100+). Most leads pay under $1, so any fire at all is a signal.
 function fireMarks(payout: number) {
-  const n = payout >= 40 ? Math.min(10, Math.floor(payout / 10)) : payout > 20 ? 3 : payout > 10 ? 2 : payout > 5 ? 1 : 0;
+  const n = Math.min(10, Math.floor(payout / 10));
   return n ? " " + "🔥".repeat(n) : "";
 }
 

@@ -181,10 +181,10 @@ function parseLeads(html: string): Lead[] {
 
 // ---------- alert text (same look as the instant alert, tagged as synced) ----------
 const isFinal = (st: string) => st === "accepted" || st === "rejected";
-// 🔥 scale (owner's spec, 2026-09-18): 1/2/3 marks above $5/$10/$20, then one mark per $10 from
-// $40 (4 marks) up to $100 (10 marks). Keep identical to lead-alert.
+// 🔥 scale (owner's spec, 2026-09-18): one mark per full $10, nothing under $10, capped at 10 marks
+// ($100+). Keep identical to lead-alert.
 function fireMarks(payout: number) {
-  const n = payout >= 40 ? Math.min(10, Math.floor(payout / 10)) : payout > 20 ? 3 : payout > 10 ? 2 : payout > 5 ? 1 : 0;
+  const n = Math.min(10, Math.floor(payout / 10));
   return n ? " " + "🔥".repeat(n) : "";
 }
 const timeTag = (l: Lead) => `${String(l.hh).padStart(2, "0")}:${String(l.mm).padStart(2, "0")} שעון קליפורניה`;
