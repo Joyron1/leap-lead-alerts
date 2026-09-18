@@ -43,6 +43,13 @@ function formatLoan(range: string | null, amount: number | null) {
   return "";
 }
 
+// 🔥 scale (owner's spec, 2026-09-18): 1/2/3 marks above $5/$10/$20, then one mark per $10 from
+// $40 (4 marks) up to $100 (10 marks). Most leads pay under $1, so any fire at all is a signal.
+function fireMarks(payout: number) {
+  const n = payout >= 40 ? Math.min(10, Math.floor(payout / 10)) : payout > 20 ? 3 : payout > 10 ? 2 : payout > 5 ? 1 : 0;
+  return n ? " " + "🔥".repeat(n) : "";
+}
+
 function esc(s: unknown) {
   return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -139,10 +146,13 @@ Deno.serve(async (req) => {
   const accepted = status === "accepted";
   const icon = accepted ? "✅" : status === "rejected" ? "❌" : "⚠️";
   const label = accepted ? "ACCEPTED" : status === "rejected" ? "REJECTED" : status.toUpperCase();
-  const fire = payout > 20 ? " 🔥🔥🔥" : payout > 10 ? " 🔥🔥" : payout > 5 ? " 🔥" : "";
+  const fire = fireMarks(payout);
+  // Accepted leads carry the money in the headline itself, so the amount is readable from the
+  // notification preview without opening the message.
+  const title = accepted ? `${headline} – ${label} – $${payout.toFixed(2)}` : `${headline} – ${label}`;
   const loan = formatLoan(row.loan_range, row.loan_amount);
   const text = [
-    `${icon} <b>${headline} – ${label}</b>${fire}`,
+    `${icon} <b>${title}</b>${fire}`,
     `🌐 ${esc(row.domain)}`,
     `📍 ${esc(row.state || "?")}`,
     `💵 $${payout.toFixed(2)}${row.pay_model ? ` (${esc(row.pay_model)})` : ""}`,

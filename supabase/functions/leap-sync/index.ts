@@ -181,15 +181,23 @@ function parseLeads(html: string): Lead[] {
 
 // ---------- alert text (same look as the instant alert, tagged as synced) ----------
 const isFinal = (st: string) => st === "accepted" || st === "rejected";
+// 🔥 scale (owner's spec, 2026-09-18): 1/2/3 marks above $5/$10/$20, then one mark per $10 from
+// $40 (4 marks) up to $100 (10 marks). Keep identical to lead-alert.
+function fireMarks(payout: number) {
+  const n = payout >= 40 ? Math.min(10, Math.floor(payout / 10)) : payout > 20 ? 3 : payout > 10 ? 2 : payout > 5 ? 1 : 0;
+  return n ? " " + "🔥".repeat(n) : "";
+}
 const timeTag = (l: Lead) => `${String(l.hh).padStart(2, "0")}:${String(l.mm).padStart(2, "0")} שעון קליפורניה`;
 
 function alertText(l: Lead, headline = "ליד חדש") {
   const accepted = l.status === "accepted";
   const icon = accepted ? "✅" : l.status === "rejected" ? "❌" : "⚠️";
   const label = accepted ? "ACCEPTED" : l.status === "rejected" ? "REJECTED" : l.status.toUpperCase();
-  const fire = l.earnings > 20 ? " 🔥🔥🔥" : l.earnings > 10 ? " 🔥🔥" : l.earnings > 5 ? " 🔥" : "";
+  const fire = fireMarks(l.earnings);
+  // Accepted leads carry the money in the headline, readable from the notification preview.
+  const title = accepted ? `${headline} – ${label} – $${l.earnings.toFixed(2)}` : `${headline} – ${label}`;
   return [
-    `${icon} <b>${headline} – ${label}</b>${fire}`,
+    `${icon} <b>${title}</b>${fire}`,
     `🌐 ${esc(l.domain)}`,
     `📍 ${esc(l.state || "?")}`,
     `💵 $${l.earnings.toFixed(2)}`,
