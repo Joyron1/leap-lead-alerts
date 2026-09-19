@@ -349,10 +349,23 @@ Deno.serve(async (req: Request) => {
         const sample = rows
           .map((r) => (r.match(/<t[dh][^>]*>[\s\S]*?<\/t[dh]>/gi) ?? []).map(stripTags))
           .filter((c) => c.length >= 6).slice(0, 4);
+        // Report filters and any lookback hints, so an unexpectedly empty day can be diagnosed
+        // without anyone touching the session outside the function.
+        const selects = (html.match(/<select[^>]*name="([^"]+)"[^>]*>[\s\S]*?<\/select>/gi) ?? []).map((s) => ({
+          name: s.match(/name="([^"]+)"/)?.[1],
+          options: (s.match(/<option[^>]*>[\s\S]*?<\/option>/gi) ?? []).slice(0, 12).map((o) => ({
+            value: o.match(/value="([^"]*)"/)?.[1] ?? "", selected: /selected/i.test(o), text: stripTags(o).slice(0, 40) })),
+        }));
+        const hiddenInputs = (html.match(/<input[^>]*type="hidden"[^>]*>/gi) ?? [])
+          .map((i) => `${i.match(/name="([^"]+)"/)?.[1] ?? "?"}=${(i.match(/value="([^"]*)"/)?.[1] ?? "").slice(0, 40)}`)
+          .filter((s) => !/csrf/i.test(s));
+        const hints = (html.match(/[^.<>{}]{0,60}(?:\d+\s*(?:days|months)|minDate|min-date|lookback|retention|history)[^.<>{}]{0,60}/gi) ?? []).slice(0, 8);
+        const emptyText = (html.match(/(?:no (?:data|leads|results|records)[^<]{0,80})/i) ?? [])[0] ?? null;
         diag.push({ day: d, htmlLength: html.length, loginPage: isLoginPage(html), trCount: rows.length,
           parsed: parseLeads(html).length, sampleRows: sample,
           elementsText: (html.match(/\d+\s+elements?/i) ?? [])[0] ?? null,
-          dateFieldValue: (html.match(/name="date"[^>]*value="([^"]*)"/) ?? [])[1] ?? null });
+          dateFieldValue: (html.match(/name="date"[^>]*value="([^"]*)"/) ?? [])[1] ?? null,
+          selects, hiddenInputs, hints, emptyText });
       }
       await setState("leap_cookies", JSON.stringify(jar));
       return json({ ok: true, debug: diag });
