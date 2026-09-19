@@ -140,8 +140,9 @@ async function login(jar: Jar): Promise<void> {
   }
 }
 
-async function fetchReport(day: string, jar: Jar): Promise<string> {
-  const path = `${REPORT_PATH}?report=leads&date=${day}+-+${day}`;
+// Any report type with any date range ("YYYY-MM-DD+-+YYYY-MM-DD"), re-logging in once if needed.
+async function fetchAny(report: string, dateParam: string, jar: Jar): Promise<string> {
+  const path = `${REPORT_PATH}?report=${report}&date=${dateParam}`;
   let res = await get(path, jar);
   let html = await res.text();
   if (isLoginPage(html) || res.status === 404 || (res.status >= 300 && res.status < 400)) {
@@ -151,6 +152,48 @@ async function fetchReport(day: string, jar: Jar): Promise<string> {
     if (isLoginPage(html)) throw new Error("not logged in after login()");
   }
   return html;
+}
+const fetchReport = (day: string, jar: Jar) => fetchAny("leads", `${day}+-+${day}`, jar);
+
+// ---------- daily statistics report ----------
+// Leap keeps per-lead rows for only ~90 days but the daily Statistics report for the whole account
+// history, with redirect and EPL figures the Leads report never shows. One row per Leap day.
+type DayStat = {
+  day: string; leads: number; accepted: number; accept_rate: number | null; redirect_rate: number | null;
+  success_redirects: number; all_redirects: number; epl: number | null; earnings: number;
+};
+const MONTHS: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+function parseStats(html: string, yearHint: number): DayStat[] {
+  const out: DayStat[] = [];
+  const int = (s: string) => /^-?\d+$/.test(s) ? Number(s) : 0;
+  const num = (s: string) => /^-?\d+(\.\d+)?$/.test(s) ? Number(s) : null;
+  for (const row of html.match(/<tr[\s\S]*?<\/tr>/gi) ?? []) {
+    const c = (row.match(/<t[dh][^>]*>[\s\S]*?<\/t[dh]>/gi) ?? []).map(stripTags);
+    // Date, Leads, Accepted, Accept rate, Redirect rate, SR, AR, EPL, Earnings
+    const m = c[0]?.match(/^([A-Za-z]{3})[a-z]*\.? (\d{1,2})(?:,? (\d{4}))?$/);
+    if (!m || c.length < 9 || !MONTHS[m[1].toLowerCase()]) continue;
+    const day = `${m[3] ?? yearHint}-${String(MONTHS[m[1].toLowerCase()]).padStart(2, "0")}-${m[2].padStart(2, "0")}`;
+    out.push({ day, leads: int(c[1]), accepted: int(c[2]), accept_rate: num(c[3]), redirect_rate: num(c[4]),
+      success_redirects: int(c[5]), all_redirects: int(c[6]), epl: num(c[7]), earnings: num(c[8]) ?? 0 });
+  }
+  return out;
+}
+
+// {"stats":true} refreshes the last 7 Leap days; {"stats":true,"ranges":["2025-08-01+-+2025-08-31",...]}
+// imports whole months. Idempotent: upsert on day. Never sends Telegram.
+async function syncStats(ranges: string[], jar: Jar) {
+  let rows = 0, upserted = 0;
+  for (const range of ranges) {
+    const html = await retry(`stats ${range}`, () => fetchAny("statistics", range, jar));
+    const stats = parseStats(html, Number(range.slice(0, 4)));
+    rows += stats.length;
+    if (!stats.length) continue;
+    const { error } = await supabase.from("leap_daily_stats")
+      .upsert(stats.map((s) => ({ ...s, fetched_at: new Date().toISOString() })), { onConflict: "day" });
+    if (error) throw new Error(`upsert stats ${range}: ${error.message}`);
+    upserted += stats.length;
+  }
+  return { ranges: ranges.length, rows, upserted };
 }
 
 // ---------- report parsing ----------
@@ -337,18 +380,31 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { date: today, hour } = localDate(new Date());
+    if (body.stats === true) {
+      const ranges: string[] = Array.isArray(body.ranges) && body.ranges.length
+        ? body.ranges.filter((r: unknown) => /^\d{4}-\d{2}-\d{2}\+-\+\d{4}-\d{2}-\d{2}$/.test(String(r)))
+        : [`${shiftDate(today, -7)}+-+${today}`];
+      const result = await syncStats(ranges, jar);
+      await setState("leap_cookies", JSON.stringify(jar));
+      return json({ ok: true, stats: result });
+    }
     const alert = body.alert !== false;               // {"alert":false} = backfill silently
     const days: string[] = Array.isArray(body.days) && body.days.length
       ? body.days.filter((d: unknown) => /^\d{4}-\d{2}-\d{2}$/.test(String(d)))
       : (hour < 2 ? [shiftDate(today, -1), today] : [today]); // near midnight also re-check yesterday
     if (body.debug === true) {
       const diag = [];
-      for (const d of days) {
-        const html = await fetchReport(d, jar);
+      // {"report":"statistics","range":"2025-08-01+-+2025-08-31"} looks at another report type / a
+      // date range instead of the per-day Leads report — used to map what else Leap can export.
+      const altReport = typeof body.report === "string" && /^[a-z-]+$/.test(body.report) ? body.report : null;
+      const altRange = typeof body.range === "string" && /^\d{4}-\d{2}-\d{2}\+-\+\d{4}-\d{2}-\d{2}$/.test(body.range) ? body.range : null;
+      for (const d of altReport ? [days[0]] : days) {
+        const html = altReport ? await fetchAny(altReport, altRange ?? `${d}+-+${d}`, jar) : await fetchReport(d, jar);
+        const reportLinks = [...new Set((html.match(/report=([a-z-]+)/gi) ?? []).map((m) => m.slice(7).toLowerCase()))];
         const rows = html.match(/<tr[\s\S]*?<\/tr>/gi) ?? [];
         const sample = rows
           .map((r) => (r.match(/<t[dh][^>]*>[\s\S]*?<\/t[dh]>/gi) ?? []).map(stripTags))
-          .filter((c) => c.length >= 6).slice(0, 4);
+          .filter((c) => c.length >= 6).slice(0, altReport ? 40 : 4);
         // Report filters and any lookback hints, so an unexpectedly empty day can be diagnosed
         // without anyone touching the session outside the function.
         const selects = (html.match(/<select[^>]*name="([^"]+)"[^>]*>[\s\S]*?<\/select>/gi) ?? []).map((s) => ({
@@ -365,7 +421,7 @@ Deno.serve(async (req: Request) => {
           parsed: parseLeads(html).length, sampleRows: sample,
           elementsText: (html.match(/\d+\s+elements?/i) ?? [])[0] ?? null,
           dateFieldValue: (html.match(/name="date"[^>]*value="([^"]*)"/) ?? [])[1] ?? null,
-          selects, hiddenInputs, hints, emptyText });
+          selects, hiddenInputs, hints, emptyText, reportLinks, report: altReport ?? "leads" });
       }
       await setState("leap_cookies", JSON.stringify(jar));
       return json({ ok: true, debug: diag });

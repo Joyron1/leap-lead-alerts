@@ -16,6 +16,22 @@ Future deploys: `scripts/deploy.sh leap-sync` from WSL (see below). Note: runnin
 - Source of truth: https://github.com/Joyron1/leap-lead-alerts. Working copy: `~/projects/leap-lead-alerts` in WSL (Ubuntu).
 - Supabase CLI 2.117 lives in WSL at `~/.local/bin/supabase` (no sudo needed), already logged in and linked to the project. The Windows npm install is not logged in; use WSL.
 
+## 2026-09-19: full history is now in our DB
+Two facts established against Leap's own pages (via `{"debug":true}`), both worth remembering:
+- The per-lead **Leads** report is a rolling ~90-day window. 2026-06-18 showed 19 leads on Sept 18 and
+  nothing on Sept 19. Every lead older than that is gone from Leap for good — `leap_leads` is now the only
+  long-term per-lead store. Backfilled 2026-06-18 → today with `{"days":[...],"alert":false}` (1,733 rows).
+- The daily **Statistics** report keeps the whole account history (first lead **2025-08-13**) with columns
+  the per-lead report never shows (redirect rate, SR/AR, EPL). Mirrored into `leap_daily_stats`
+  (415 days, 4,675 leads, $5,910.15 through 2026-09-19), refreshed daily by cron `leap_stats_daily`.
+
+Cross-check over the 91 overlapping days: our per-lead counts and dollars equal Leap's daily statistics on
+every single day. So for a management system: per-lead detail from 2026-06-18, per-day totals from 2025-08-13.
+Per-domain history older than ~90 days does not exist anywhere in Leap.
+
+Not stored yet from the Leads report (parsed but dropped): Type (Form/API/Site), Vertical, Campaign,
+Subaccount. Adding them = schema + `parseLeads` + an update path for existing rows; re-backfill is cheap.
+
 ## 2026-09-12: weekly keyword report (built, waiting for credentials)
 New function `keyword-report`, cron `keyword_report_weekly` (Monday 08:30 UTC). Google Sheet already created
 in Joy's Drive: https://docs.google.com/spreadsheets/d/15reZqnfz18V_2Hje0QnmFdqRzgtUUFIBOG7kUriTHMU

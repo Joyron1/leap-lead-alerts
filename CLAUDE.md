@@ -14,7 +14,8 @@ Telegram messages are in Hebrew, code/comments in English.
 | `supabase/functions/lead-digest` | Supabase Edge, **every 3 hours** via pg_cron | **Dormant by owner's choice** (2026-09-12): Joy wants every lead as its own message, so `alert_min_payout` is **0** and nothing ever waits here. Kept because it is one `/threshold 3` away from working: it batches every finalized lead that was left unannounced into a single Telegram message (totals, top domains, top states) and stamps `digested_at` so nothing is reported twice. Sends nothing when there is nothing waiting. Also reachable from the bot as `/digest`, and `{"dry":true,"sample":N}` returns the rendered text without sending or marking anything. |
 | `supabase/functions/keyword-report` | Supabase Edge, **Monday 08:30 UTC** via pg_cron | Weekly SEO check for the whole network. Stage `data`: Google Search Console (service account, last 28 days vs previous 28, per site + per query), each site's live Yoast title, "quick wins" (position 4-20 with demand) and "wasted" queries (impressions, no clicks) → Google Sheet tabs Summary/Sites/Queries/Quick wins + Telegram summary, then triggers stage `research` at itself. Stage `research`: Claude (`claude-opus-5`, web search, structured JSON) judges the current keywords and names missing US payday-loan terms with evidence → Recommendations tab + second Telegram. `{"dry":true}` on either stage returns the output without writing/sending. Secrets: `GSC_SA_JSON`, `GSC_PROPERTY`, `KEYWORD_SHEET_ID`, `ANTHROPIC_API_KEY`. |
 | `supabase/functions/daily-summary` | Supabase Edge, cron 07:00+08:00 UTC (sends only at 10:00 Israel) + Telegram webhook | Runs a sync first, then sends the daily summary (totals, 🟢/🔴 % vs previous day). Also serves bot commands: `/summary /today /day /week /month /top /domain /state /help`. |
-| `public.leap_leads` | Postgres | Lead log, no PII. `source` = xhr/fetch/hook (browser) or leap-sync. |
+| `public.leap_leads` | Postgres | Lead log, no PII. `source` = xhr/fetch/hook (browser) or leap-sync. **This is the only long-term per-lead store**: Leap's own Leads report is a rolling ~90-day window (verified 2026-09-19). Backfilled 2026-06-18 onward on 2026-09-19. |
+| `public.leap_daily_stats` | Postgres, refreshed daily 08:10 UTC via `leap-sync {"stats":true}` | Mirror of Leap's daily **Statistics** report, which keeps the full account history (first lead 2025-08-13) and has figures the per-lead report lacks: redirect rate, successful/all redirects, EPL. One row per Leap day. Import months with `{"stats":true,"ranges":["2025-08-01+-+2025-08-31"]}`. |
 | `public.app_secrets` | Postgres (RLS, service role only) | `cron_key` (auth for cron/manual calls), `leap_cookies`, `leap_sync_state`, `alert_min_payout` (dollars; the immediate-alert threshold, `/threshold`; **currently 0 = alert on every lead**, the owner's explicit preference), `quiet_alert_hours` + `quiet_alert_state` (the liveness watchdog, `/quiet`; 0 disables). |
 | SQL functions `lead_summary`, `lead_range_summary` | Postgres | Aggregations used by the bot. |
 
@@ -36,7 +37,8 @@ Telegram: bot token + chat id live only in Supabase secrets.
 - Columns: Type, Status, ID, Date, Vertical, Campaign, Subaccount, Domain, State, Earnings, subid1-4, Min prices.
 - Date column is `HH:MM` for today but `Sep 03, 22:31` for past days — `parseLeads` handles both.
 - A lead appears in the report a few seconds **before** its status/earnings are set → treat rows without Accepted/Rejected as pending.
-- Debug a day without side effects: `{"debug":true,"days":["YYYY-MM-DD"]}`. Silent backfill: `{"days":[...],"alert":false}`.
+- Debug a day without side effects: `{"debug":true,"days":["YYYY-MM-DD"]}` — also reports the page's filters, date-picker bounds and Leap's empty-state text. Peek at another report: `{"debug":true,"report":"statistics","range":"2025-08-01+-+2025-08-31","days":["2025-08-01"]}`. Silent backfill: `{"days":[...],"alert":false}` (rows are stamped `digested_at` so they never surface later).
+- **Retention**: the Leads report (`report=leads`) only serves the last ~92 days — a day drops out at the 90-day preset boundary. The Statistics report (`report=statistics`; any unknown slug also lands there) serves everything since the account started, one row per day: Date, Leads, Accepted, Accept rate, Redirect rate, SR, AR, EPL, Earnings. There is no per-domain history older than 90 days anywhere in Leap.
 
 ## Dev workflow
 ```bash
@@ -48,6 +50,7 @@ CRON_KEY=... scripts/run.sh daily-summary '{"period":"today"}'
 CRON_KEY=... scripts/run.sh lead-digest            # flush the batched cheap leads now
 CRON_KEY=... scripts/run.sh lead-digest '{"dry":true,"sample":12}'   # preview the text, send nothing
 CRON_KEY=... scripts/run.sh leap-sync '{"quiet":true}'              # force the liveness watchdog now
+CRON_KEY=... scripts/run.sh leap-sync '{"stats":true}'              # refresh leap_daily_stats for the last 7 days
 CRON_KEY=... scripts/run.sh keyword-report '{"dry":true}'            # GSC + sheet preview, nothing written
 CRON_KEY=... scripts/run.sh keyword-report '{"stage":"research","dry":true}'   # Claude research preview
 scripts/build-wp-plugin.sh         # rebuild wordpress/leap-lead-alerts.zip after editing the snippet
