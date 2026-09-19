@@ -235,9 +235,12 @@ async function syncDay(day: string, jar: Jar, alert: boolean) {
     if (!k) {
       // brand-new lead (the browser hook missed it): insert, and alert – stage 1 if not final yet
       const ts = zonedToUtc(day, l.hh, l.mm).toISOString();
+      // A silent run ({"alert":false} = historical backfill) must never surface later: stamp the row
+      // as already digested, or the next lead-digest run would announce months of old leads at once.
       const { error } = await supabase.from("leap_leads").insert({
         lead_id: l.id, domain: l.domain, page: "", state: l.state, status: final ? l.status : "pending", payout: l.earnings,
         pay_model: "", is_declined: false, source: "leap-sync", client_ts: ts, telegram_sent: false,
+        digested_at: alert ? null : new Date().toISOString(),
       });
       if (error) { if (!/duplicate/i.test(error.message)) throw new Error(`insert ${l.id}: ${error.message}`); continue; }
       inserted++;
