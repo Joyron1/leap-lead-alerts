@@ -1,6 +1,7 @@
 // `npm run selftest` — checks the pure data logic (no network, no credentials).
 import { buildDaily, cashBox, groupBy, hourlyPoints, leadsCoverageFrom, normalizeLead, periodTotals, siteRows, type Lead, type StatRow } from "./src/lib/data";
 import { fireMarks, niceTicks } from "./src/lib/format";
+import { aggregate, concentration, heatmap, normalizePage, payoutHistogram, weekdayHour, weeklyBy, weeks, weekStart } from "./src/lib/analytics";
 import { addDays, pacificDay, pacificMidnight, resolveRange } from "./src/lib/time";
 
 let failed = 0;
@@ -65,6 +66,17 @@ eq("cash box: many small amounts stay exact", cashBox([{ day: "d", leads: 0, acc
   [0.1, 0.1, 0.1].map((amount, id) => ({ id, on: "d", amount, note: "", createdBy: "" }))).balance, 0);
 eq("daily series starts at the first day with earnings", buildDaily([{ day: "2025-07-29", leads: 0, accepted: 0, earnings: 0 },
   { day: "2025-07-30", leads: 1, accepted: 1, earnings: 2 }], [], "2025-07-31").map((d) => d.day), ["2025-07-30", "2025-07-31"]);
+
+// --- analytics ---
+eq("weekStart is the Sunday on/before the day", [weekStart("2026-09-26"), weekStart("2026-09-20"), weekStart("2026-09-21")], ["2026-09-20", "2026-09-20", "2026-09-20"]);
+eq("weekday/hour in Israel: 2026-09-21 15:00Z = Monday 18:00", weekdayHour(Date.parse("2026-09-21T15:00:00Z"), "il"), [1, 18]);
+eq("weekday/hour in California: same instant = Monday 08:00", weekdayHour(Date.parse("2026-09-21T15:00:00Z"), "pt"), [1, 8]);
+eq("heatmap puts leads in their cell", heatmap(leads, "pt")[1][8].leads + heatmap(leads, "pt")[1][9].leads, 2);
+eq("payout histogram buckets (0, 0.6, 1.8, 27.8)", payoutHistogram(leads).map((b) => b.leads), [1, 0, 1, 1, 0, 0, 0, 1]);
+eq("concentration: top 25% of these leads = 27.8 / 30.2", Math.round(concentration(leads, 0.25) * 1000) / 1000, 0.921);
+eq("normalizePage strips query, trailing slash, host", [normalizePage("/get-a-loan/?utm=x"), normalizePage("https://a.snaploans.cash/Rates-Fees/"), normalizePage("/")], ["/get-a-loan", "/rates-fees", "/"]);
+eq("aggregate: accept rate and EPL", (() => { const a = aggregate(leads, () => "x")[0]; return [a.leads, a.accepted, a.rejected, Math.round(a.epl * 100) / 100]; })(), [4, 3, 1, 7.55]);
+eq("weeklyBy sums into the right week", weeklyBy(leads, ["jackson.snaploans.cash"], (l) => l.host, weeks("2026-09-20", "2026-09-26"), "earnings"), [[27.8]]);
 
 console.log(failed ? `\n${failed} FAILED` : "\nall passed");
 if (failed) throw new Error(`${failed} self-test check(s) failed`);

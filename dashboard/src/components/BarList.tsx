@@ -17,12 +17,13 @@ export function BarList({ items, format, top = 8, othersLabel = "אחרים" }: 
       {rows.map((r) => (
         <li key={r.key} className={r.onClick ? "clickable" : undefined} onClick={r.onClick}
           title={`${r.label}: ${format(r.value)}${r.detail ? " · " + r.detail : ""}`}>
-          <span className="bl-label">{r.label}</span>
+          {/* bdi: a label with no letters ("$100–$500") must not be reordered by the RTL page */}
+          <span className="bl-label"><bdi>{r.label}</bdi></span>
           <span className="bl-track">
             <span className={r.key === "__others" ? "bl-fill bl-others" : "bl-fill"} style={{ width: `${Math.max(r.value > 0 ? 1.5 : 0, (r.value / max) * 100)}%` }} />
           </span>
           <span className="bl-value num">{format(r.value)}</span>
-          <span className="bl-detail muted">{r.detail}</span>
+          <span className="bl-detail muted"><bdi>{r.detail}</bdi></span>
         </li>
       ))}
     </ul>

@@ -56,6 +56,21 @@ Two data sources, one series: `leap_daily_stats` (whole history since 2025-08-13
 before the per-lead coverage starts, `leap_leads` (live, per lead) from then on. Leap itself deletes
 per-lead rows after ~90 days, so per-site/per-state detail only exists from the backfill onward.
 
+- **ניתוח** — insights (EPL, most profitable state per lead, best hour, revenue concentration),
+  weekly trend comparing up to 5 sites on any metric, a US tile map + ranked states, a
+  weekday × hour heatmap (Israel or California time), a per-site table with sparklines, payout
+  distribution, EPL by requested loan amount, landing pages, and monthly leads / EPL for the whole
+  history. Site and state filters cross-filter every view (each view ignores its own dimension).
+- **קופה** — balance = all-time earnings − withdrawals; admins add/delete withdrawals, viewers read.
+
+Live alerts: Realtime on `leap_leads` → toast + chime + OS notification (when the tab is in the
+background and notifications were allowed) + unread count in the tab title.
+
+## Visual check without signing in
+
+`npm run dev`, then open <http://localhost:5180/preview.html>: the analysis and overview pages
+rendered with **synthetic** data. Dev-only; not part of the production build.
+
 ## Checks
 
 ```bash

@@ -12,11 +12,13 @@ import { Overview } from "./pages/Overview";
 import { Sites } from "./pages/Sites";
 import { Leads } from "./pages/Leads";
 import { Cash } from "./pages/Cash";
+import { Analytics } from "./pages/Analytics";
 
-type Tab = "overview" | "sites" | "leads" | "cash";
+type Tab = "overview" | "analytics" | "sites" | "leads" | "cash";
 export type Role = "admin" | "viewer";
 const TABS: { key: Tab; label: string }[] = [
   { key: "overview", label: "סקירה" },
+  { key: "analytics", label: "ניתוח" },
   { key: "sites", label: "אתרים" },
   { key: "leads", label: "לידים" },
   { key: "cash", label: "קופה" },
@@ -222,6 +224,7 @@ function Dashboard({ email, role }: { email: string; role: Role }) {
 
       <main>
         {tab === "overview" && <Overview leads={leads} days={days} cover={cover} range={range} onSite={openSite} />}
+        {tab === "analytics" && <Analytics leads={leads} days={days} cover={cover} range={range} />}
         {tab === "sites" && <Sites leads={leads} cover={cover} range={range} today={today} onSite={openSite} />}
         {tab === "leads" && <Leads leads={leads} cover={cover} range={range} site={site} setSite={setSite} />}
         {tab === "cash" && <Cash days={days} withdrawals={withdrawals} onChanged={reloadWithdrawals} canEdit={role === "admin"} />}
