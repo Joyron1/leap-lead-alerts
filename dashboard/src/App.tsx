@@ -4,6 +4,7 @@ import { configError, supabase } from "./lib/supabase";
 import { buildDaily, leadsCoverageFrom, normalizeLead, type Lead, type RawLead, type StatRow, type Withdrawal } from "./lib/data";
 import { fetchLeads, fetchStats, fetchWithdrawals } from "./lib/api";
 import { chime, notificationsSupported, subscribeLive, systemNotify, type LiveStatus } from "./lib/live";
+import { disablePush, enablePush, pushState, pushSupported, refreshPush, sendTestPush, type PushState } from "./lib/push";
 import { fireMarks, money } from "./lib/format";
 import { longDay, RANGES, relativeHe, resolveRange, todayPT, type RangeKey } from "./lib/time";
 import { Login } from "./components/Login";
@@ -89,6 +90,16 @@ function Dashboard({ email, role }: { email: string; role: Role }) {
   const [perm, setPerm] = useState(() => (notificationsSupported() ? Notification.permission : "denied"));
   const soundRef = useRef(sound);
   soundRef.current = sound;
+  // Web Push for this device: when on, the OS notification comes from the service worker (even with
+  // the dashboard closed), so the page must not raise a second one of its own.
+  const [push, setPush] = useState<PushState>(pushSupported() ? "off" : "unsupported");
+  const [pushBusy, setPushBusy] = useState(false);
+  const pushRef = useRef(push);
+  pushRef.current = push;
+  useEffect(() => {
+    pushState().then(setPush).catch(() => {});
+    void refreshPush();
+  }, []);
   const knownFinal = useRef<Set<string> | null>(null);   // null until the first load has seeded it
   const unseen = useRef(0);
 
@@ -104,7 +115,7 @@ function Dashboard({ email, role }: { email: string; role: Role }) {
     setTimeout(() => dismiss(id), TOAST_MS);
     if (soundRef.current) chime(accepted);
     if (document.hidden) {
-      systemNotify(title, body, l.id);
+      if (pushRef.current !== "on") systemNotify(title, body, l.id);
       unseen.current++;
       document.title = `(${unseen.current}) ${BASE_TITLE}`;
     }
@@ -184,7 +195,41 @@ function Dashboard({ email, role }: { email: string; role: Role }) {
   const range = resolveRange(rangeKey, firstDay, today);
   const openSite = (host: string) => { setSite(host); setTab("leads"); };
   const askPermission = async () => { if (notificationsSupported()) setPerm(await Notification.requestPermission()); };
-  const testAlert = () => announce({ ...leads[0], id: "test", status: "accepted", payout: 27.8, site: "jackson", state: "MS", loan: "$100–$500" }, true);
+  const info = (title: string, body: string, tone: Toast["tone"] = "info") => {
+    const id = `info-${Date.now()}`;
+    setToasts((t) => [{ id, title, body, tone }, ...t].slice(0, 5));
+    setTimeout(() => dismiss(id), TOAST_MS);
+  };
+  const togglePush = async () => {
+    setPushBusy(true);
+    try {
+      if (push === "on") {
+        if (!confirm("לכבות התראות במכשיר הזה? מכשירים אחרים ימשיכו לקבל.")) return;
+        setPush(await disablePush());
+        info("🔕 ההתראות כובו במכשיר הזה", "אפשר להפעיל שוב בכל רגע.");
+      } else {
+        const s = await enablePush();
+        setPush(s);
+        setPerm(notificationsSupported() ? Notification.permission : "denied");
+        if (s === "on") info("🔔 ההתראות פעילות במכשיר הזה", "כל ליד יקפוץ גם כשהדשבורד סגור. לחץ 'בדיקת התראה' כדי לראות.", "good");
+        else info("ההתראות לא הופעלו", s === "denied" ? "הדפדפן חוסם התראות לאתר הזה. אפשר לשנות בהגדרות האתר (סמל המנעול בשורת הכתובת)." : "לא אושרה הרשאה.", "bad");
+      }
+    } catch (e) {
+      info("שגיאה בהגדרת ההתראות", String((e as Error)?.message ?? e), "bad");
+    } finally {
+      setPushBusy(false);
+    }
+  };
+  const testAlert = async () => {
+    announce({ ...leads[0], id: "test", status: "accepted", payout: 27.8, site: "jackson", state: "MS", loan: "$100–$500" }, true);
+    if (push !== "on") return;
+    try {
+      const r = await sendTestPush();
+      info("התראת בדיקה נשלחה מהשרת", r.total ? `נשלחה ל-${r.sent} מתוך ${r.total} מכשירים שלך. היא אמורה להופיע כהתראה של המחשב.` : "לא נמצא מכשיר רשום. כבה והפעל שוב את ההתראות.", r.sent ? "good" : "bad");
+    } catch (e) {
+      info("שליחת הבדיקה נכשלה", String((e as Error)?.message ?? e), "bad");
+    }
+  };
 
   return (
     <div className="app">
@@ -199,9 +244,17 @@ function Dashboard({ email, role }: { email: string; role: Role }) {
         <span className={`live live-${live}`} title={live === "live" ? "לידים חדשים מופיעים כאן מיד" : "הנתונים עדיין מתרעננים כל 2 דקות"}>
           <span aria-hidden>●</span> {live === "live" ? "חי" : live === "connecting" ? "מתחבר…" : "לא מחובר"}
         </span>
-        {notificationsSupported() && perm !== "granted" && (
+        {push !== "unsupported" ? (
+          <button className={push === "on" ? "small push-on" : "small"} onClick={togglePush} disabled={pushBusy || push === "denied"}
+            aria-pressed={push === "on"}
+            title={push === "on" ? "כל ליד מגיע כהתראה של המחשב, גם כשהדשבורד סגור. לחיצה מכבה במכשיר הזה."
+              : push === "denied" ? "הדפדפן חוסם התראות לאתר הזה. אפשר לשנות בהגדרות האתר (סמל המנעול)."
+              : "התראה על כל ליד ישירות במחשב, גם כשהדשבורד סגור"}>
+            {pushBusy ? "רגע…" : push === "on" ? "🔔 התראות פעילות" : push === "denied" ? "🔕 התראות חסומות" : "🔔 התראות למחשב"}
+          </button>
+        ) : notificationsSupported() && perm !== "granted" && (
           <button className="small" onClick={askPermission} disabled={perm === "denied"}
-            title={perm === "denied" ? "ההתראות חסומות בהגדרות הדפדפן לאתר הזה" : "התראה של המערכת גם כשהחלון ברקע"}>
+            title={perm === "denied" ? "ההתראות חסומות בהגדרות הדפדפן לאתר הזה" : "התראה של המערכת כשהחלון ברקע"}>
             {perm === "denied" ? "🔕 התראות חסומות" : "🔔 הפעלת התראות"}
           </button>
         )}

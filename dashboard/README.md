@@ -63,8 +63,12 @@ per-lead rows after ~90 days, so per-site/per-state detail only exists from the 
   history. Site and state filters cross-filter every view (each view ignores its own dimension).
 - **קופה** — balance = all-time earnings − withdrawals; admins add/delete withdrawals, viewers read.
 
-Live alerts: Realtime on `leap_leads` → toast + chime + OS notification (when the tab is in the
-background and notifications were allowed) + unread count in the tab title.
+Live alerts: Realtime on `leap_leads` → toast + chime + unread count in the tab title while the
+dashboard is open. **Web Push** (button "🔔 התראות למחשב", per device): `public/sw.js` shows an OS
+notification for every lead even when the dashboard is closed — sent by the `push-send` edge function
+from a database trigger. While push is on for a device, the page does not raise its own OS
+notification (no duplicates). "בדיקת התראה" sends a real test push through the server. iPhone: only
+after "Add to Home Screen" (iOS 16.4+).
 
 ## Visual check without signing in
 

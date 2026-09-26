@@ -213,6 +213,7 @@ button.link.danger { color: var(--bad); }
 table.compact th, table.compact td { padding: 4px 6px; font-size: 11px; }
 
 /* ---------- live ---------- */
+button.push-on { border-color: var(--good); }
 .live { font-size: 12px; white-space: nowrap; color: var(--ink-2); }
 .live-live > span { color: var(--good); }
 .live-connecting > span { color: var(--warning); }
