@@ -6,8 +6,8 @@ import { longDay } from "../lib/time";
 
 const israelToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" }).format(new Date());
 
-export function Cash({ days, withdrawals, onChanged }: {
-  days: Day[]; withdrawals: Withdrawal[]; onChanged: () => Promise<void>;
+export function Cash({ days, withdrawals, onChanged, canEdit }: {
+  days: Day[]; withdrawals: Withdrawal[]; onChanged: () => Promise<void>; canEdit: boolean;
 }) {
   const box = cashBox(days, withdrawals);
   const [on, setOn] = useState(israelToday);
@@ -61,7 +61,9 @@ export function Cash({ days, withdrawals, onChanged }: {
         </div>
       </section>
 
-      <section className="card">
+      {!canEdit && <p className="note">צפייה בלבד. רק מנהל יכול להוסיף או למחוק משיכות.</p>}
+
+      <section className="card" hidden={!canEdit}>
         <h2>הוספת משיכה</h2>
         <form className="withdraw-form" onSubmit={submit}>
           <label>תאריך<input type="date" required value={on} max={israelToday()} onChange={(e) => setOn(e.target.value)} /></label>
@@ -84,7 +86,7 @@ export function Cash({ days, withdrawals, onChanged }: {
                 <td className="num strong">{money(w.amount)}</td>
                 <td>{w.note}</td>
                 <td className="muted small" dir="ltr">{w.createdBy}</td>
-                <td><button className="link danger" onClick={() => remove(w)}>מחיקה</button></td>
+                <td>{canEdit && <button className="link danger" onClick={() => remove(w)}>מחיקה</button>}</td>
               </tr>
             ))}
             {!withdrawals.length && <tr><td colSpan={5} className="muted empty">עוד אין משיכות.</td></tr>}

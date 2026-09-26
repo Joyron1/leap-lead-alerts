@@ -8,6 +8,9 @@ export const moneyShort = (n: number) => {
 };
 
 export const int = (n: number) => n.toLocaleString("en-US");
+
+// Same scale as the Telegram alerts (fireMarks in lead-alert / leap-sync): one per full $10, max 10.
+export const fireMarks = (payout: number) => "🔥".repeat(Math.max(0, Math.min(10, Math.floor(payout / 10))));
 export const pct = (n: number) => (n * 100).toLocaleString("en-US", { maximumFractionDigits: 1 }) + "%";
 
 export const change = (cur: number, prev: number): number | null =>
