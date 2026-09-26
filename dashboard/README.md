@@ -3,7 +3,11 @@
 Private web dashboard over the lead data the Supabase functions collect (`leap_leads`,
 `leap_daily_stats`). React + Vite, no server of its own: the browser reads Supabase directly with
 the **publishable** key, and the RLS policies from `supabase/migrations/20260926000100_dashboard_access.sql`
-decide what a signed-in user may see. Deploys to Vercel unchanged later (root directory `dashboard`).
+decide what a signed-in user may see.
+
+**Live:** <https://leap-lead-alerts.vercel.app> — Vercel project in the `snap-loans-cash` team, Root
+Directory `dashboard`, env vars `VITE_SUPABASE_URL` + `VITE_SUPABASE_PUBLISHABLE_KEY`. Every push to
+`main` deploys automatically; Vercel reports the result as a commit status on GitHub.
 
 ## Run it locally
 
