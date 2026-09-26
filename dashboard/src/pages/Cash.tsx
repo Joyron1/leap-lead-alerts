@@ -57,7 +57,7 @@ export function Cash({ days, withdrawals, onChanged }: {
         <div className="tile">
           <div className="tile-label">סך משיכות</div>
           <div className="tile-value num">{money(box.withdrawn)}</div>
-          <div className="delta muted">{withdrawals.length} משיכות</div>
+          <div className="delta muted">{withdrawals.length === 1 ? "משיכה אחת" : `${withdrawals.length} משיכות`}</div>
         </div>
       </section>
 
