@@ -16,6 +16,23 @@ Future deploys: `scripts/deploy.sh leap-sync` from WSL (see below). Note: runnin
 - Source of truth: https://github.com/Joyron1/leap-lead-alerts. Working copy: `~/projects/leap-lead-alerts` in WSL (Ubuntu).
 - Supabase CLI 2.117 lives in WSL at `~/.local/bin/supabase` (no sudo needed), already logged in and linked to the project. The Windows npm install is not logged in; use WSL.
 
+## 2026-09-26: local dashboard (dashboard/)
+React + Vite SPA, runs locally now (`dashboard/start-dashboard.cmd` or `npm run dev`, port 5180 because
+3000 is used by another local project), same files deploy to Vercel later with root `dashboard`.
+Chose a plain web app over Electron on purpose: one codebase for local, Vercel and phone; the browser's
+"install as app" gives the desktop-app feel; wrapping in Electron later is cheap if still wanted.
+
+Access model (migration `20260926000100_dashboard_access.sql`): publishable key in the browser, and
+RLS select policies on `leap_leads` / `leap_daily_stats` gated on `is_dashboard_user()` = signed-in user
+whose email is in `dashboard_users` **and** confirmed in `auth.users`. Verified: anon sees 0 rows; an
+authenticated JWT claiming Joy's email without a real confirmed account sees 0 rows; leap-sync (service
+role) keeps writing. The same migration revoked insert/update/delete/truncate from anon/authenticated on
+the data tables and app_secrets (Supabase's defaults granted them; TRUNCATE bypasses RLS).
+
+Not yet done by a human: Joy's first sign-up + email confirmation (no auth user existed on 2026-09-26),
+adding http://localhost:5180 to Auth → Redirect URLs, and eyeballing the signed-in pages with real data —
+only the login screen was rendered and checked; the data logic is covered by `npm run selftest`.
+
 ## 2026-09-19: full history is now in our DB
 Two facts established against Leap's own pages (via `{"debug":true}`), both worth remembering:
 - The per-lead **Leads** report is a rolling ~90-day window. 2026-06-18 showed 19 leads on Sept 18 and
