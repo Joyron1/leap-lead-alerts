@@ -59,7 +59,7 @@ export function buildDaily(stats: StatRow[], leads: Lead[], today: string): Day[
     d.earnings += l.payout;
     byDay.set(l.day, d);
   }
-  const firstWithData = stats.find((s) => s.leads > 0)?.day ?? (leads.length ? cover : today);
+  const firstWithData = stats.find((s) => s.leads > 0 || s.earnings !== 0)?.day ?? (leads.length ? cover : today);
   return eachDay(firstWithData, today).map((day) => {
     const d = byDay.get(day);
     return d ? { ...d, earnings: Math.round(d.earnings * 100) / 100 } : { day, leads: 0, accepted: 0, earnings: 0 };
@@ -169,6 +169,17 @@ export function siteRows(leads: Lead[], from: string, to: string, today: string)
       epl: b.leads ? b.earnings / b.leads : 0, share: b.earnings / total,
     };
   });
+}
+
+// ---------- cash box ----------
+export type Withdrawal = { id: number; on: string; amount: number; note: string; createdBy: string };
+
+// Balance = everything ever earned (the same merged daily series the charts use) minus every withdrawal.
+// Summed in integer cents so $6,111.15 − $4,354.26 is exactly $1,756.89, not 1756.8899999.
+export function cashBox(days: Day[], withdrawals: Withdrawal[]) {
+  const earnedC = days.reduce((s, d) => s + Math.round(d.earnings * 100), 0);
+  const outC = withdrawals.reduce((s, w) => s + Math.round(w.amount * 100), 0);
+  return { earned: earnedC / 100, withdrawn: outC / 100, balance: (earnedC - outC) / 100 };
 }
 
 // ---------- CSV ----------

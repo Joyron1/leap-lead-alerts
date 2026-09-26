@@ -1,5 +1,5 @@
 // `npm run selftest` — checks the pure data logic (no network, no credentials).
-import { buildDaily, groupBy, hourlyPoints, leadsCoverageFrom, normalizeLead, periodTotals, siteRows, type Lead, type StatRow } from "./src/lib/data";
+import { buildDaily, cashBox, groupBy, hourlyPoints, leadsCoverageFrom, normalizeLead, periodTotals, siteRows, type Lead, type StatRow } from "./src/lib/data";
 import { niceTicks } from "./src/lib/format";
 import { addDays, pacificDay, pacificMidnight, resolveRange } from "./src/lib/time";
 
@@ -54,6 +54,16 @@ const hp = hourlyPoints(leads, "2026-09-21");
 eq("hourly: 24 buckets, first labelled 10:00 Israel", [hp.length, hp[0].label], [24, "10:00"]);
 eq("hourly: 15:00Z = 08:00 PDT -> bucket 8, 16:00Z -> bucket 9", [hp[8].value, hp[9].value], [1.8, 27.8]);
 eq("loan label", leads[0].loan, "$100–$500");
+
+// --- cash box: the owner's own numbers, in float-hostile amounts ---
+const ownerDays = [{ day: "2025-07-30", leads: 1, accepted: 1, earnings: 2 }, { day: "2026-09-26", leads: 1, accepted: 1, earnings: 6109.15 }];
+eq("cash box: 6,111.15 earned − 4,354.26 withdrawn = 1,756.89 exactly",
+  cashBox(ownerDays, [{ id: 1, on: "2026-09-26", amount: 4354.26, note: "", createdBy: "" }]),
+  { earned: 6111.15, withdrawn: 4354.26, balance: 1756.89 });
+eq("cash box: many small amounts stay exact", cashBox([{ day: "d", leads: 0, accepted: 0, earnings: 0.3 }],
+  [0.1, 0.1, 0.1].map((amount, id) => ({ id, on: "d", amount, note: "", createdBy: "" }))).balance, 0);
+eq("daily series starts at the first day with earnings", buildDaily([{ day: "2025-07-29", leads: 0, accepted: 0, earnings: 0 },
+  { day: "2025-07-30", leads: 1, accepted: 1, earnings: 2 }], [], "2025-07-31").map((d) => d.day), ["2025-07-30", "2025-07-31"]);
 
 console.log(failed ? `\n${failed} FAILED` : "\nall passed");
 if (failed) throw new Error(`${failed} self-test check(s) failed`);

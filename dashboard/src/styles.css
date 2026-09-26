@@ -165,6 +165,15 @@ tr.clickable { cursor: pointer; }
 .status { font-size: 12px; white-space: nowrap; }
 .status-warning > span { color: var(--warning); }
 
+/* ---------- cash box ---------- */
+[hidden] { display: none !important; }
+.tile-value.negative { color: var(--bad); }
+.withdraw-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 8px; }
+.withdraw-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ink-2); }
+.withdraw-form label.grow { flex: 1 1 220px; }
+.withdraw-form input { min-width: 120px; }
+button.link.danger { color: var(--bad); }
+
 /* ---------- leads filters ---------- */
 .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .search { min-width: 240px; flex: 0 1 320px; }

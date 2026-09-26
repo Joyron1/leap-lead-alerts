@@ -1,19 +1,21 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { configError, supabase } from "./lib/supabase";
-import { buildDaily, leadsCoverageFrom, type Lead, type StatRow } from "./lib/data";
-import { fetchLeads, fetchStats } from "./lib/api";
+import { buildDaily, leadsCoverageFrom, type Lead, type StatRow, type Withdrawal } from "./lib/data";
+import { fetchLeads, fetchStats, fetchWithdrawals } from "./lib/api";
 import { longDay, RANGES, relativeHe, resolveRange, todayPT, type RangeKey } from "./lib/time";
 import { Login } from "./components/Login";
 import { Overview } from "./pages/Overview";
 import { Sites } from "./pages/Sites";
 import { Leads } from "./pages/Leads";
+import { Cash } from "./pages/Cash";
 
-type Tab = "overview" | "sites" | "leads";
+type Tab = "overview" | "sites" | "leads" | "cash";
 const TABS: { key: Tab; label: string }[] = [
   { key: "overview", label: "סקירה" },
   { key: "sites", label: "אתרים" },
   { key: "leads", label: "לידים" },
+  { key: "cash", label: "קופה" },
 ];
 const REFRESH_MS = 120_000;
 
@@ -62,6 +64,7 @@ function Dashboard({ email }: { email: string }) {
   const [site, setSite] = useState("");
   const [leads, setLeads] = useState<Lead[] | null>(null);
   const [stats, setStats] = useState<StatRow[] | null>(null);
+  const [withdrawals, setWithdrawals] = useState<Withdrawal[] | null>(null);
   const [loadedAt, setLoadedAt] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -70,8 +73,8 @@ function Dashboard({ email }: { email: string }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [l, s] = await Promise.all([fetchLeads(), fetchStats()]);
-      setLeads(l); setStats(s); setLoadedAt(Date.now()); setError(null);
+      const [l, s, w] = await Promise.all([fetchLeads(), fetchStats(), fetchWithdrawals()]);
+      setLeads(l); setStats(s); setWithdrawals(w); setLoadedAt(Date.now()); setError(null);
     } catch (e) {
       setError(String((e as Error)?.message ?? e));
     } finally {
@@ -92,7 +95,9 @@ function Dashboard({ email }: { email: string }) {
   const today = todayPT();
   const days = useMemo(() => (leads && stats ? buildDaily(stats, leads, today) : []), [leads, stats, today]);
 
-  if (!leads || !stats) {
+  const reloadWithdrawals = useCallback(async () => { setWithdrawals(await fetchWithdrawals()); }, []);
+
+  if (!leads || !stats || !withdrawals) {
     return error
       ? <Screen title="שגיאה בטעינת הנתונים" body={error} action={<button onClick={load}>נסה שוב</button>} />
       : <Screen title="טוען נתונים…" />;
@@ -119,7 +124,7 @@ function Dashboard({ email }: { email: string }) {
         <button className="link small" onClick={() => supabase.auth.signOut()}>יציאה</button>
       </header>
 
-      <div className="rangebar" role="radiogroup" aria-label="טווח תאריכים">
+      <div className="rangebar" role="radiogroup" aria-label="טווח תאריכים" hidden={tab === "cash"}>
         {RANGES.map((r) => (
           <button key={r.key} role="radio" aria-checked={rangeKey === r.key} className={rangeKey === r.key ? "seg active" : "seg"} onClick={() => setRangeKey(r.key)}>{r.label}</button>
         ))}
@@ -132,6 +137,7 @@ function Dashboard({ email }: { email: string }) {
         {tab === "overview" && <Overview leads={leads} days={days} cover={cover} range={range} onSite={openSite} />}
         {tab === "sites" && <Sites leads={leads} cover={cover} range={range} today={today} onSite={openSite} />}
         {tab === "leads" && <Leads leads={leads} cover={cover} range={range} site={site} setSite={setSite} />}
+        {tab === "cash" && <Cash days={days} withdrawals={withdrawals} onChanged={reloadWithdrawals} />}
       </main>
 
       <footer className="muted small">
