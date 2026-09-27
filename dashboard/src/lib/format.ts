@@ -1,10 +1,14 @@
+// Sign before the currency symbol: −$217.55, never $-217.55.
+const sign = (n: number) => (n < 0 && Math.abs(n) >= 0.005 ? "−" : "");
+
 export const money = (n: number) =>
-  "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  sign(n) + "$" + Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // Axis / compact: $0.6 · $12 · $1.2K
 export const moneyShort = (n: number) => {
-  if (Math.abs(n) >= 1000) return "$" + (n / 1000).toLocaleString("en-US", { maximumFractionDigits: 1 }) + "K";
-  return "$" + n.toLocaleString("en-US", { maximumFractionDigits: n < 10 ? 2 : 0 });
+  const a = Math.abs(n);
+  if (a >= 1000) return sign(n) + "$" + (a / 1000).toLocaleString("en-US", { maximumFractionDigits: 1 }) + "K";
+  return sign(n) + "$" + a.toLocaleString("en-US", { maximumFractionDigits: a < 10 ? 2 : 0 });
 };
 
 export const int = (n: number) => n.toLocaleString("en-US");

@@ -7,6 +7,15 @@ import { buildDaily, normalizeLead, type Lead } from "./lib/data";
 import { resolveRange, todayPT, addDays, RANGES, type RangeKey } from "./lib/time";
 import { Analytics } from "./pages/Analytics";
 import { Overview } from "./pages/Overview";
+import { Cash } from "./pages/Cash";
+import type { Withdrawal } from "./lib/data";
+
+// Synthetic withdrawals for the cash box preview (not the real figures).
+const WITHDRAWALS: Withdrawal[] = [
+  { id: 3, on: addDays(todayPT(), -9), amount: 350, note: "העברה לבנק", createdBy: "admin@example.com" },
+  { id: 2, on: addDays(todayPT(), -40), amount: 520.5, note: "משיכה חודשית", createdBy: "admin@example.com" },
+  { id: 1, on: addDays(todayPT(), -75), amount: 300, note: "", createdBy: "partner@example.com" },
+];
 
 let seed = 7;
 const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
@@ -45,6 +54,15 @@ function Preview() {
   const today = todayPT();
   const days = buildDaily([], leads, today);
   const range = resolveRange(key, days[0].day, today);
+  const page = new URLSearchParams(location.search).get("page");
+  if (page === "cash" || page === "cash-viewer") {
+    return (
+      <div className="app">
+        <p className="alert alert-info" style={{ margin: "12px 0" }}>תצוגה מקדימה של הקופה עם נתונים סינתטיים בלבד.</p>
+        <Cash days={days} withdrawals={WITHDRAWALS} onChanged={async () => {}} canEdit={page === "cash"} />
+      </div>
+    );
+  }
   return (
     <div className="app">
       <p className="alert alert-info" style={{ margin: "12px 0" }}>תצוגה מקדימה עם נתונים סינתטיים בלבד (פיתוח). אלה לא הנתונים האמיתיים.</p>

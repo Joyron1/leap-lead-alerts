@@ -1,6 +1,6 @@
 // `npm run selftest` — checks the pure data logic (no network, no credentials).
 import { buildDaily, cashBox, groupBy, hourlyPoints, leadsCoverageFrom, normalizeLead, periodTotals, siteRows, type Lead, type StatRow } from "./src/lib/data";
-import { fireMarks, niceTicks } from "./src/lib/format";
+import { fireMarks, money, moneyShort, niceTicks } from "./src/lib/format";
 import { aggregate, concentration, heatmap, normalizePage, payoutHistogram, weekdayHour, weeklyBy, weeks, weekStart } from "./src/lib/analytics";
 import { addDays, pacificDay, pacificMidnight, resolveRange } from "./src/lib/time";
 
@@ -29,6 +29,7 @@ eq("mtd on Mar 31 compares with all of Feb (clamped)", mtd.prev, { from: "2026-0
 eq("all range starts at first day, no comparison", [resolveRange("all", "2025-08-13", "2026-09-26").from, resolveRange("all", "2025-08-13", "2026-09-26").prev], ["2025-08-13", null]);
 eq("niceTicks(63.2)", niceTicks(63.2), [0, 20, 40, 60, 80]);
 eq("niceTicks(0)", niceTicks(0), [0, 1]);
+eq("money puts the sign before the $", [money(-217.55), money(1756.89), money(-0.001), moneyShort(-1500)], ["−$217.55", "$1,756.89", "$0.00", "−$1.5K"]);
 eq("fireMarks matches the Telegram scale", [0.6, 9.99, 10, 27.8, 99, 150].map((p) => [...fireMarks(p)].length), [0, 0, 1, 2, 9, 10]);
 
 // --- data ---

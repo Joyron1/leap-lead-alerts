@@ -170,11 +170,62 @@ tr.clickable { cursor: pointer; }
 
 /* ---------- cash box ---------- */
 [hidden] { display: none !important; }
-.tile-value.negative { color: var(--bad); }
-.withdraw-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 8px; }
-.withdraw-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ink-2); }
-.withdraw-form label.grow { flex: 1 1 220px; }
-.withdraw-form input { min-width: 120px; }
+.negative { color: var(--bad) !important; }
+.cash-hero { display: flex; flex-direction: column; gap: 18px; padding: 20px 22px; }
+.cash-hero-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; flex-wrap: wrap; }
+.cash-balance { font-size: 52px; font-weight: 600; line-height: 1.05; margin: 4px 0; }
+.cash-eq { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
+.cash-eq > div { display: flex; flex-direction: column; gap: 2px; }
+.cash-eq strong { font-size: 17px; font-weight: 600; }
+.eq-op { font-size: 18px; color: var(--muted); padding-bottom: 1px; }
+/* the whole of earnings: withdrawn (neutral) vs still in the box (series blue); 2px surface gap */
+.split-bar { display: flex; gap: 2px; height: 14px; }
+.split-bar > span { display: block; min-width: 2px; }
+.split-bar > span:first-child { border-start-start-radius: 4px; border-end-start-radius: 4px; }
+.split-bar > span:last-child { border-start-end-radius: 4px; border-end-end-radius: 4px; }
+.split-in, .sw-in { background: var(--series); }
+.split-out, .sw-out { background: var(--others); }
+.split-legend { display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: var(--ink-2); }
+.split-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; }
+.cash-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+@media (max-width: 860px) { .cash-stats { grid-template-columns: 1fr; } }
+.unit { font-size: 14px; font-weight: 400; color: var(--ink-2); }
+.cash-grid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; align-items: start; }
+.cash-grid.single { grid-template-columns: 1fr; }
+.cash-grid > * { min-width: 0; }
+@media (max-width: 860px) { .cash-grid { grid-template-columns: 1fr; } }
+.wd-list { list-style: none; margin: 0; padding: 0; }
+.wd-row { display: flex; align-items: center; gap: 12px; padding: 12px 2px; border-top: 1px solid var(--grid); }
+.wd-row:first-child { border-top: none; }
+.wd-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.wd-date { font-weight: 600; }
+.wd-note { color: var(--ink-2); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wd-by { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wd-amount { font-size: 16px; white-space: nowrap; }
+.wd-del, .wd-del-spacer { width: 28px; flex: none; }
+.wd-del { height: 28px; padding: 0; border-color: transparent; background: none; color: var(--muted); border-radius: 6px; }
+.wd-del:hover { color: var(--bad); border-color: var(--border); }
+.wd-confirm { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.danger-btn { border-color: var(--bad) !important; color: var(--bad); }
+.wd-total { border-top: 2px solid var(--axis); }
+.wd-total .wd-date { color: var(--ink-2); font-weight: 600; }
+.wd-form { display: flex; flex-direction: column; gap: 12px; }
+.wd-form h2 { margin-bottom: 0; }
+.field { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--ink-2); }
+.field input { width: 100%; }
+.money-input { display: flex; align-items: center; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); direction: ltr; }
+.money-input:focus-within { border-color: var(--series); }
+.money-input .prefix { padding-inline: 12px 4px; color: var(--muted); font-size: 18px; }
+.money-input input { border: none; background: none; font-size: 22px; font-weight: 600; padding: 8px 12px 8px 0; outline: none; font-variant-numeric: tabular-nums; }
+.money-input:has(input[aria-invalid="true"]) { border-color: var(--bad); }
+.quick { display: flex; gap: 6px; margin-top: -4px; }
+.field-msg { font-size: 12px; margin: -4px 0 0; }
+.field-msg.bad { color: var(--bad); }
+.after { display: flex; justify-content: space-between; align-items: baseline; padding: 10px 12px; border-radius: 8px; background: var(--page); border: 1px solid var(--border); }
+.after strong { font-size: 16px; }
+button.primary.wide { width: 100%; padding: 11px 16px; font-weight: 600; }
+button.primary:disabled { background: var(--others); border-color: var(--others); color: var(--ink-2); opacity: 1; }
 button.link.danger { color: var(--bad); }
 
 /* ---------- analytics ---------- */
