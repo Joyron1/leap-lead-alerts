@@ -25,9 +25,10 @@ export function Overview({ leads, days, cover, range, onSite }: {
   let cols: Column[];
   let caption: string;
   let tickLabel: (c: Column) => string;
-  if (range.key === "today") {
+  if (range.from === range.to && range.from >= cover) {
+    // A single Leap day (today or yesterday): break it down by hour.
     cols = hourlyPoints(leads, range.from).map((p) => ({ key: p.key, label: p.label, value: p.value, detail: `${p.leads} לידים` }));
-    caption = "הכנסה לפי שעה, שעון ישראל (היום של Leap מתחיל בחצות קליפורניה)";
+    caption = `הכנסה לפי שעה ב-${longDay(range.from)}, שעון ישראל (היום של Leap מתחיל בחצות קליפורניה)`;
     tickLabel = (c) => c.label;
   } else if (daysInclusive(range.from, range.to) > 92) {
     cols = monthlyPoints(days, range.from, range.to).map((p) => ({ key: p.key, label: p.label, value: p.value, detail: `${int(p.leads)} לידים` }));

@@ -19,6 +19,11 @@ eq("pacificMidnight in PST = 08:00Z", new Date(pacificMidnight("2026-01-15")).to
 eq("addDays across month", addDays("2026-02-28", 1), "2026-03-01");
 const r7 = resolveRange("7d", "2025-08-13", "2026-09-26");
 eq("7d range", [r7.from, r7.to, r7.prev], ["2026-09-20", "2026-09-26", { from: "2026-09-13", to: "2026-09-19" }]);
+const yd = resolveRange("yesterday", "2025-08-13", "2026-09-27");
+eq("yesterday range: one finished day vs the day before", [yd.from, yd.to, yd.prev], ["2026-09-26", "2026-09-26", { from: "2026-09-25", to: "2026-09-25" }]);
+eq("yesterday totals come from the daily series, not the today-cutoff path",
+  periodTotals(resolveRange("yesterday", "2026-09-20", "2026-09-23"), [{ day: "2026-09-22", leads: 3, accepted: 3, earnings: 4.5 }, { day: "2026-09-21", leads: 2, accepted: 2, earnings: 1 }], []),
+  { cur: { leads: 3, accepted: 3, earnings: 4.5 }, prev: { leads: 2, accepted: 2, earnings: 1 } });
 const mtd = resolveRange("mtd", "2025-08-13", "2026-03-31");
 eq("mtd on Mar 31 compares with all of Feb (clamped)", mtd.prev, { from: "2026-02-01", to: "2026-02-28" });
 eq("all range starts at first day, no comparison", [resolveRange("all", "2025-08-13", "2026-09-26").from, resolveRange("all", "2025-08-13", "2026-09-26").prev], ["2025-08-13", null]);

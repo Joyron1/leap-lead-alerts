@@ -65,9 +65,10 @@ export function relativeHe(ms: number, now = Date.now()) {
 }
 
 // ---------- date ranges ----------
-export type RangeKey = "today" | "7d" | "30d" | "90d" | "mtd" | "all";
+export type RangeKey = "today" | "yesterday" | "7d" | "30d" | "90d" | "mtd" | "all";
 export const RANGES: { key: RangeKey; label: string }[] = [
   { key: "today", label: "היום" },
+  { key: "yesterday", label: "אתמול" },
   { key: "7d", label: "7 ימים" },
   { key: "30d", label: "30 יום" },
   { key: "90d", label: "90 יום" },
@@ -85,6 +86,11 @@ export function resolveRange(key: RangeKey, firstDay: string, today = todayPT())
     case "today":
       // "Yesterday up to the same time" is computed from the per-lead rows (see periodTotals).
       return { key, from: today, to: today, prev: { from: addDays(today, -1), to: addDays(today, -1) }, prevLabel: "לעומת אתמול עד אותה שעה" };
+    case "yesterday": {
+      // A finished Leap day, compared with the whole day before it.
+      const y = addDays(today, -1);
+      return { key, from: y, to: y, prev: { from: addDays(today, -2), to: addDays(today, -2) }, prevLabel: "לעומת שלשום" };
+    }
     case "7d": return back(7);
     case "30d": return back(30);
     case "90d": return back(90);
